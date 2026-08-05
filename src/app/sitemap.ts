@@ -3,7 +3,7 @@ import { getPublishedProjects, getAllProvinces } from "@/lib/data-source";
 import { SITE_URL } from "@/lib/jsonld";
 import { PRICE_TIER_LABEL } from "@/lib/price-tier";
 
-export default function sitemap(): MetadataRoute.Sitemap {
+export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const staticRoutes: MetadataRoute.Sitemap = [
     { url: SITE_URL, changeFrequency: "daily", priority: 1 },
     { url: `${SITE_URL}/khu-vuc`, changeFrequency: "weekly", priority: 0.6 },
@@ -13,7 +13,9 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: `${SITE_URL}/lien-he`, changeFrequency: "yearly", priority: 0.2 },
   ];
 
-  const provinceRoutes: MetadataRoute.Sitemap = getAllProvinces().map((p) => ({
+  const [provinces, publishedProjects] = await Promise.all([getAllProvinces(), getPublishedProjects()]);
+
+  const provinceRoutes: MetadataRoute.Sitemap = provinces.map((p) => ({
     url: `${SITE_URL}/khu-vuc/${p.slug}`,
     changeFrequency: "weekly",
     priority: 0.6,
@@ -27,7 +29,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
 
   // CHỈ dự án publicationStatus === "published" — draft/mock không xuất hiện ở đây,
   // đồng bộ với generateStaticParams của trang chi tiết (lib/data-source.ts).
-  const projectRoutes: MetadataRoute.Sitemap = getPublishedProjects().map((p) => ({
+  const projectRoutes: MetadataRoute.Sitemap = publishedProjects.map((p) => ({
     url: `${SITE_URL}/can-ho/${p.provinceSlug}/${p.slug}`,
     lastModified: p.updatedAt,
     changeFrequency: "weekly",
