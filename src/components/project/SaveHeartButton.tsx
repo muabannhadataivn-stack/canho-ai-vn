@@ -5,24 +5,26 @@ import {
   isProjectSaved,
   toggleSavedProject,
   notifySavedProjectsChanged,
+  makeProjectKey,
   SAVED_PROJECTS_EVENT,
 } from "@/lib/saved-projects";
 
-export function SaveHeartButton({ projectId }: { projectId: string }) {
+export function SaveHeartButton({ provinceSlug, slug }: { provinceSlug: string; slug: string }) {
+  const projectKey = makeProjectKey(provinceSlug, slug);
   const [saved, setSaved] = useState(false);
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
-    setSaved(isProjectSaved(projectId));
+    setSaved(isProjectSaved(projectKey));
     setHydrated(true);
-    const onChange = () => setSaved(isProjectSaved(projectId));
+    const onChange = () => setSaved(isProjectSaved(projectKey));
     window.addEventListener(SAVED_PROJECTS_EVENT, onChange);
     window.addEventListener("storage", onChange);
     return () => {
       window.removeEventListener(SAVED_PROJECTS_EVENT, onChange);
       window.removeEventListener("storage", onChange);
     };
-  }, [projectId]);
+  }, [projectKey]);
 
   return (
     <button
@@ -32,7 +34,7 @@ export function SaveHeartButton({ projectId }: { projectId: string }) {
       onClick={(e) => {
         e.preventDefault();
         e.stopPropagation();
-        toggleSavedProject(projectId);
+        toggleSavedProject(projectKey);
         notifySavedProjectsChanged();
         setSaved((s) => !s);
       }}

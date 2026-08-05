@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { Roboto, Roboto_Condensed, Roboto_Mono } from "next/font/google";
-import { AppShell } from "@/components/layout/AppShell";
 import "./globals.css";
 
 const roboto = Roboto({
@@ -42,9 +41,7 @@ export const viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="vi" className={`${roboto.variable} ${robotoCondensed.variable} ${robotoMono.variable}`}>
-      <body>
-        <AppShell>{children}</AppShell>
-      </body>
+      <body>{children}</body>
     </html>
   );
 }

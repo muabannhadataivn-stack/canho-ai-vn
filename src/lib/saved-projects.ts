@@ -3,14 +3,21 @@
 /**
  * State phía client cho "Đã lưu" — chỉ localStorage, KHÔNG có backend, KHÔNG đồng bộ tài khoản.
  * Có version cho cấu trúc lưu trữ để có thể migrate/xoá an toàn nếu đổi format sau này.
+ *
+ * Khoá lưu là "{provinceSlug}:{slug}" — trùng với URL /can-ho/{tinh}/{slug}, là định danh
+ * công khai ổn định. KHÔNG dùng project.id (uuid nội bộ DB, có thể đổi nếu dữ liệu bị xoá/tạo lại).
  */
 
 const STORAGE_KEY = "canho-ai-vn:saved-projects";
-const STORAGE_VERSION = 1;
+const STORAGE_VERSION = 2;
 
 interface SavedProjectsPayload {
   version: number;
-  projectIds: string[];
+  projectKeys: string[];
+}
+
+export function makeProjectKey(provinceSlug: string, slug: string): string {
+  return `${provinceSlug}:${slug}`;
 }
 
 function isBrowser(): boolean {
@@ -18,18 +25,18 @@ function isBrowser(): boolean {
 }
 
 function readRaw(): SavedProjectsPayload {
-  if (!isBrowser()) return { version: STORAGE_VERSION, projectIds: [] };
+  if (!isBrowser()) return { version: STORAGE_VERSION, projectKeys: [] };
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return { version: STORAGE_VERSION, projectIds: [] };
+    if (!raw) return { version: STORAGE_VERSION, projectKeys: [] };
     const parsed = JSON.parse(raw) as Partial<SavedProjectsPayload>;
-    if (parsed.version !== STORAGE_VERSION || !Array.isArray(parsed.projectIds)) {
-      // Version không khớp hoặc dữ liệu hỏng — reset an toàn, không throw ra ngoài.
-      return { version: STORAGE_VERSION, projectIds: [] };
+    if (parsed.version !== STORAGE_VERSION || !Array.isArray(parsed.projectKeys)) {
+      // Version không khớp (vd dữ liệu cũ theo format id) hoặc dữ liệu hỏng — reset an toàn, không throw ra ngoài.
+      return { version: STORAGE_VERSION, projectKeys: [] };
     }
-    return { version: STORAGE_VERSION, projectIds: parsed.projectIds };
+    return { version: STORAGE_VERSION, projectKeys: parsed.projectKeys };
   } catch {
-    return { version: STORAGE_VERSION, projectIds: [] };
+    return { version: STORAGE_VERSION, projectKeys: [] };
   }
 }
 
@@ -43,20 +50,20 @@ function writeRaw(payload: SavedProjectsPayload): void {
 }
 
 export function getSavedProjectIds(): string[] {
-  return readRaw().projectIds;
+  return readRaw().projectKeys;
 }
 
-export function isProjectSaved(projectId: string): boolean {
-  return readRaw().projectIds.includes(projectId);
+export function isProjectSaved(projectKey: string): boolean {
+  return readRaw().projectKeys.includes(projectKey);
 }
 
-export function toggleSavedProject(projectId: string): string[] {
+export function toggleSavedProject(projectKey: string): string[] {
   const current = readRaw();
-  const exists = current.projectIds.includes(projectId);
+  const exists = current.projectKeys.includes(projectKey);
   const next = exists
-    ? current.projectIds.filter((id) => id !== projectId)
-    : [...current.projectIds, projectId];
-  writeRaw({ version: STORAGE_VERSION, projectIds: next });
+    ? current.projectKeys.filter((key) => key !== projectKey)
+    : [...current.projectKeys, projectKey];
+  writeRaw({ version: STORAGE_VERSION, projectKeys: next });
   return next;
 }
 

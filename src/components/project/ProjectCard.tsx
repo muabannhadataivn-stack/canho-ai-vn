@@ -30,7 +30,7 @@ export function ProjectCard({ project }: { project: ProjectWithTier }) {
         <div className="text-[13px] font-semibold text-blueprint">{formatPriceRange(project.pricing)}</div>
       </div>
       <div className="absolute right-2 top-2">
-        <SaveHeartButton projectId={project.id} />
+        <SaveHeartButton provinceSlug={project.provinceSlug} slug={project.slug} />
       </div>
     </Link>
   );
