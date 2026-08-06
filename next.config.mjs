@@ -2,7 +2,16 @@
 const nextConfig = {
   reactStrictMode: true,
   images: {
-    remotePatterns: [],
+    // Ảnh đại diện (hero image) dự án upload lên Supabase Storage bucket "project-images"
+    // (xem admin-actions.ts saveHeroImage()) — next/image chặn domain lạ mặc định, phải khai
+    // báo tường minh đúng project Supabase này mới render được.
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "hegblprvlmtoodfvrpkj.supabase.co",
+        pathname: "/storage/v1/object/public/**",
+      },
+    ],
   },
   experimental: {
     // Mặc định 1mb — CSV nhập hàng loạt (~1842 dòng, 2 file) từ /admin/du-an/nhap-csv

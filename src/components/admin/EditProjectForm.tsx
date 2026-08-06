@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useState, type ChangeEvent, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { updateProject, publishProject, findNearbyAmenities, deleteProject } from "@/lib/admin-actions";
 import {
@@ -35,6 +35,48 @@ const labelClass = "mb-1 block text-[13px] font-medium text-graphite";
 
 export function EditProjectForm({ project }: { project: ProjectWithTier }) {
   const router = useRouter();
+
+  // Ảnh đại diện (hero image) — heroImageFile chỉ set khi admin vừa chọn file mới (chưa upload,
+  // upload thật diễn ra trong updateProject() lúc bấm "Lưu thay đổi", giống cách 3 danh sách
+  // động ở dưới chỉ ghi thật lúc submit). heroImagePreview là URL hiển thị <img> ngay (URL thật
+  // đã lưu, hoặc blob: tạm cho file vừa chọn) — heroImageRemoved đánh dấu admin bấm "Xoá ảnh".
+  const [heroImageFile, setHeroImageFile] = useState<File | null>(null);
+  const [heroImagePreview, setHeroImagePreview] = useState<string | null>(project.media.heroImage);
+  const [heroImageAlt, setHeroImageAlt] = useState(project.media.heroImageAlt ?? "");
+  const [heroImageRemoved, setHeroImageRemoved] = useState(false);
+  const [heroImageError, setHeroImageError] = useState<string | null>(null);
+
+  const HERO_IMAGE_ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp"];
+  const HERO_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
+
+  function handleHeroImageChange(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // cho phép chọn lại đúng file đó lần sau (VD: sau khi bấm Xoá ảnh)
+    if (!file) return;
+
+    if (!HERO_IMAGE_ALLOWED_TYPES.includes(file.type)) {
+      setHeroImageError("Chỉ chấp nhận file JPG, PNG hoặc WEBP.");
+      return;
+    }
+    if (file.size > HERO_IMAGE_MAX_BYTES) {
+      setHeroImageError("Kích thước ảnh tối đa 5MB.");
+      return;
+    }
+
+    setHeroImageError(null);
+    if (heroImagePreview?.startsWith("blob:")) URL.revokeObjectURL(heroImagePreview);
+    setHeroImageFile(file);
+    setHeroImageRemoved(false);
+    setHeroImagePreview(URL.createObjectURL(file));
+  }
+
+  function handleRemoveHeroImage() {
+    if (heroImagePreview?.startsWith("blob:")) URL.revokeObjectURL(heroImagePreview);
+    setHeroImageFile(null);
+    setHeroImagePreview(null);
+    setHeroImageRemoved(true);
+    setHeroImageError(null);
+  }
 
   // Thông tin cốt lõi
   const [name, setName] = useState(project.name);
@@ -224,6 +266,9 @@ export function EditProjectForm({ project }: { project: ProjectWithTier }) {
     formData.set("amenitiesJson", JSON.stringify(amenities));
     formData.set("timelineJson", JSON.stringify(timeline));
     formData.set("fitForJson", JSON.stringify(fitFor));
+    if (heroImageFile) formData.set("heroImageFile", heroImageFile);
+    formData.set("heroImageAlt", heroImageAlt);
+    formData.set("heroImageRemoved", heroImageRemoved ? "1" : "0");
 
     const result = await updateProject(formData);
     setLoading(false);
@@ -283,6 +328,51 @@ export function EditProjectForm({ project }: { project: ProjectWithTier }) {
       </div>
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+        <details open className="rounded-2xl border border-line bg-white p-4">
+          <summary className="cursor-pointer font-display text-[15px] font-bold text-ink">Ảnh đại diện</summary>
+          <div className="mt-4 flex flex-col gap-3">
+            {heroImagePreview ? (
+              <div className="relative h-40 w-full max-w-sm overflow-hidden rounded-xl bg-paper-dim">
+                {/* eslint-disable-next-line @next/next/no-img-element -- preview có thể là blob: tạm (file mới chọn, chưa upload), next/image không phục vụ được blob URL */}
+                <img src={heroImagePreview} alt="Xem trước ảnh đại diện" className="h-full w-full object-cover" />
+              </div>
+            ) : (
+              <div className="flex h-40 w-full max-w-sm items-center justify-center rounded-xl border border-dashed border-line text-[12.5px] text-graphite/50">
+                Chưa có ảnh đại diện
+              </div>
+            )}
+
+            <div className="flex items-center gap-2">
+              <label className="cursor-pointer rounded-full border border-line px-3.5 py-1.5 text-[13px] font-medium text-graphite hover:bg-paper-dim">
+                {heroImagePreview ? "Đổi ảnh khác" : "Chọn ảnh"}
+                <input type="file" accept="image/jpeg,image/png,image/webp" onChange={handleHeroImageChange} className="hidden" />
+              </label>
+              {heroImagePreview && (
+                <button
+                  type="button"
+                  onClick={handleRemoveHeroImage}
+                  className="rounded-full border border-line px-3.5 py-1.5 text-[13px] font-medium text-red hover:bg-red/5"
+                >
+                  Xoá ảnh
+                </button>
+              )}
+            </div>
+            {heroImageError && <p className="text-[12px] text-red">{heroImageError}</p>}
+            <p className="text-[11.5px] text-graphite/50">JPG, PNG hoặc WEBP, tối đa 5MB.</p>
+
+            <label className="block">
+              <span className={labelClass}>Alt text (mô tả ảnh — SEO/accessibility)</span>
+              <input
+                type="text"
+                value={heroImageAlt}
+                onChange={(e) => setHeroImageAlt(e.target.value)}
+                placeholder="VD: Toàn cảnh dự án X nhìn từ trên cao"
+                className={inputClass}
+              />
+            </label>
+          </div>
+        </details>
+
         <details open className="rounded-2xl border border-line bg-white p-4">
           <summary className="cursor-pointer font-display text-[15px] font-bold text-ink">Thông tin cốt lõi</summary>
           <div className="mt-4 grid grid-cols-2 gap-3">

@@ -72,6 +72,89 @@ function parseJsonArray(raw: FormDataEntryValue | null): unknown[] {
   }
 }
 
+// ---- Ảnh đại diện (hero image) — Supabase Storage bucket "project-images" ----
+// Bucket + policy tạo qua migration 20260808000000_project_images_storage.sql — public đọc,
+// authenticated ghi (dù Server Action này dùng service_role nên bỏ qua RLS, policy chỉ là
+// lớp phòng thủ cho sau này). Giới hạn loại file + kích thước validate lại ở đây (server-side)
+// dù client (EditProjectForm.tsx) đã chặn trước — không tin tưởng hoàn toàn validate phía client.
+const HERO_IMAGE_BUCKET = "project-images";
+const HERO_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
+const HERO_IMAGE_ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp"];
+
+// public URL Supabase Storage có dạng .../object/public/{bucket}/{path} — cắt lấy đúng phần
+// {path} để gọi .remove() dọn file cũ khi ảnh bị thay thế/gỡ bỏ.
+function extractStoragePath(publicUrl: string): string | null {
+  const marker = `/object/public/${HERO_IMAGE_BUCKET}/`;
+  const idx = publicUrl.indexOf(marker);
+  return idx === -1 ? null : publicUrl.slice(idx + marker.length);
+}
+
+// Upload ảnh mới (nếu có)/xoá ảnh (nếu bị gỡ) lên Storage, rồi upsert project_media — tách
+// riêng khỏi khối update chính ở updateProject() vì cần đọc row hiện có trước (biết URL cũ để
+// dọn rác Storage khi ảnh bị thay thế/gỡ bỏ).
+async function saveHeroImage(projectId: string, formData: FormData): Promise<string | null> {
+  const fileEntry = formData.get("heroImageFile");
+  const altRaw = String(formData.get("heroImageAlt") ?? "").trim();
+  const removed = String(formData.get("heroImageRemoved") ?? "") === "1";
+  const hasNewFile = fileEntry instanceof File && fileEntry.size > 0;
+
+  const { data: existing } = await supabaseServer
+    .from("project_media")
+    .select("hero_image_url")
+    .eq("project_id", projectId)
+    .maybeSingle();
+
+  // Không đổi ảnh — chỉ có thể đổi alt text, giữ nguyên hero_image_url hiện có (không ghi đè null).
+  if (!hasNewFile && !removed) {
+    const { error } = await supabaseServer
+      .from("project_media")
+      .upsert(
+        { project_id: projectId, hero_image_url: existing?.hero_image_url ?? null, hero_image_alt: altRaw || null },
+        { onConflict: "project_id" }
+      );
+    return error?.message ?? null;
+  }
+
+  const oldPath = existing?.hero_image_url ? extractStoragePath(existing.hero_image_url) : null;
+
+  if (hasNewFile) {
+    const file = fileEntry as File;
+    if (!HERO_IMAGE_ALLOWED_TYPES.includes(file.type)) {
+      return "Ảnh đại diện phải là file JPG, PNG hoặc WEBP.";
+    }
+    if (file.size > HERO_IMAGE_MAX_BYTES) {
+      return "Ảnh đại diện vượt quá 5MB.";
+    }
+
+    const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, "_");
+    const path = `${projectId}/${Date.now()}-${safeName}`;
+    const { error: uploadError } = await supabaseServer.storage
+      .from(HERO_IMAGE_BUCKET)
+      .upload(path, file, { contentType: file.type, upsert: false });
+    if (uploadError) return `Upload ảnh thất bại: ${uploadError.message}`;
+
+    const { data: publicUrlData } = supabaseServer.storage.from(HERO_IMAGE_BUCKET).getPublicUrl(path);
+
+    // Dọn file cũ SAU khi upload file mới thành công — không chặn lưu nếu dọn rác lỗi.
+    if (oldPath) await supabaseServer.storage.from(HERO_IMAGE_BUCKET).remove([oldPath]);
+
+    const { error } = await supabaseServer
+      .from("project_media")
+      .upsert(
+        { project_id: projectId, hero_image_url: publicUrlData.publicUrl, hero_image_alt: altRaw || null },
+        { onConflict: "project_id" }
+      );
+    return error?.message ?? null;
+  }
+
+  // removed === true, không có file mới thay thế.
+  if (oldPath) await supabaseServer.storage.from(HERO_IMAGE_BUCKET).remove([oldPath]);
+  const { error } = await supabaseServer
+    .from("project_media")
+    .upsert({ project_id: projectId, hero_image_url: null, hero_image_alt: null }, { onConflict: "project_id" });
+  return error?.message ?? null;
+}
+
 // Xoá toàn bộ dòng cũ rồi insert dòng mới — đơn giản nhất cho danh sách động ở quy mô này.
 async function replaceChildRows(
   table: "project_amenities" | "project_timeline" | "project_fit_for",
@@ -308,6 +391,10 @@ export async function updateProject(formData: FormData): Promise<ActionResult> {
   ]);
   const childError = amenitiesError ?? timelineError ?? fitForError;
   if (childError) return { ok: false, error: childError };
+
+  // ---- Ảnh đại diện (hero image) ----
+  const heroImageError = await saveHeroImage(id, formData);
+  if (heroImageError) return { ok: false, error: heroImageError };
 
   // Bắt buộc — nếu không, Router Cache phía client (điều hướng mềm qua Link/router.push,
   // KHÔNG liên quan gì tới force-dynamic ở page.tsx) có thể phục vụ lại đúng RSC payload
