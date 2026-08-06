@@ -80,7 +80,7 @@ export function MapCanvas({
             <div className="text-[12px] text-graphite/60">{formatPriceRange(active.project.pricing)}</div>
           </div>
           <Link
-            href={`/can-ho/${active.project.provinceSlug}/${active.project.slug}`}
+            href={`/${active.project.provinceSlug}/${active.project.slug}`}
             className="flex shrink-0 items-center self-center text-[12.5px] font-semibold text-blueprint"
           >
             Xem chi tiết →

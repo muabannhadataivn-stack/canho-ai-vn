@@ -10,7 +10,7 @@ export function ProjectCard({ project }: { project: ProjectWithTier }) {
 
   return (
     <Link
-      href={`/can-ho/${project.provinceSlug}/${project.slug}`}
+      href={`/${project.provinceSlug}/${project.slug}`}
       className="group relative flex gap-3 rounded-2xl border border-line bg-white p-2.5 transition-shadow hover:shadow-md"
     >
       <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-xl bg-paper-dim">

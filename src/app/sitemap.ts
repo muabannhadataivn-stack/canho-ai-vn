@@ -30,7 +30,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   // CHỈ dự án publicationStatus === "published" — draft/mock không xuất hiện ở đây,
   // đồng bộ với generateStaticParams của trang chi tiết (lib/data-source.ts).
   const projectRoutes: MetadataRoute.Sitemap = publishedProjects.map((p) => ({
-    url: `${SITE_URL}/can-ho/${p.provinceSlug}/${p.slug}`,
+    url: `${SITE_URL}/${p.provinceSlug}/${p.slug}`,
     lastModified: p.updatedAt,
     changeFrequency: "weekly",
     priority: 0.8,

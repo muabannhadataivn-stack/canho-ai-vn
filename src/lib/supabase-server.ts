@@ -24,7 +24,7 @@ export const supabaseServer = createClient(supabaseUrl, serviceRoleKey, {
 });
 
 // LƯU Ý: KHÔNG ép cache: "no-store" ở đây — client này dùng chung cho cả data-source.ts
-// (các trang public SSG như /can-ho/[tinh]/[slug], /muc-gia/[tier]... cần fetch cache
+// (các trang public SSG như /[tinh]/[slug], /muc-gia/[tier]... cần fetch cache
 // được ở build time) lẫn trang admin (cần dữ liệu luôn tươi). Ép no-store toàn cục làm
 // vỡ prerender tĩnh của các route SSG. Trang admin cần fetch tươi tự khai báo
 // `export const dynamic = "force-dynamic"` ở chính page.tsx đó thay vì sửa client dùng chung.

@@ -4,7 +4,7 @@ import { buildFaqEntries, type FaqEntry } from "./faq-bank";
 export const SITE_URL = "https://canho.ai.vn";
 
 export function projectUrl(project: { provinceSlug: string; slug: string }): string {
-  return `${SITE_URL}/can-ho/${project.provinceSlug}/${project.slug}`;
+  return `${SITE_URL}/${project.provinceSlug}/${project.slug}`;
 }
 
 /**

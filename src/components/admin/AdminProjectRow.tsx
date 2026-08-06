@@ -82,7 +82,7 @@ export function AdminProjectRow({ id, name, province, provinceSlug, slug, public
         <div className="flex items-center gap-2">
           {publicationStatus === "published" && (
             <a
-              href={`/can-ho/${provinceSlug}/${slug}`}
+              href={`/${provinceSlug}/${slug}`}
               target="_blank"
               rel="noopener noreferrer"
               onClick={(e) => e.stopPropagation()}

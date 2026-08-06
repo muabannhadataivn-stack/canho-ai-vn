@@ -4,7 +4,7 @@
  * State phía client cho "Đã lưu" — chỉ localStorage, KHÔNG có backend, KHÔNG đồng bộ tài khoản.
  * Có version cho cấu trúc lưu trữ để có thể migrate/xoá an toàn nếu đổi format sau này.
  *
- * Khoá lưu là "{provinceSlug}:{slug}" — trùng với URL /can-ho/{tinh}/{slug}, là định danh
+ * Khoá lưu là "{provinceSlug}:{slug}" — trùng với URL /{tinh}/{slug}, là định danh
  * công khai ổn định. KHÔNG dùng project.id (uuid nội bộ DB, có thể đổi nếu dữ liệu bị xoá/tạo lại).
  */
 

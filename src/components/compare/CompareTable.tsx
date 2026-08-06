@@ -22,7 +22,7 @@ export function CompareTable({ projects }: { projects: [ProjectWithTier, Project
         {projects.map((p) => (
           <Link
             key={p.id}
-            href={`/can-ho/${p.provinceSlug}/${p.slug}`}
+            href={`/${p.provinceSlug}/${p.slug}`}
             className="flex flex-col gap-2 rounded-2xl border border-line bg-white p-2.5"
           >
             <div className="relative h-20 w-full overflow-hidden rounded-xl bg-paper-dim">
