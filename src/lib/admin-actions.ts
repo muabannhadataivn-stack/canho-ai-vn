@@ -1,5 +1,6 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { supabaseServer } from "./supabase-server";
 import { assembleProjects } from "./data-source";
 import { slugify } from "./slug";
@@ -10,6 +11,8 @@ import { hasPricingData } from "@/components/project/PricingTable";
 import { fetchNearbyAmenities } from "./osm-places";
 import { distanceToProvinceCenter } from "./distance";
 import { recordApiUsage } from "./api-budget";
+import { generateProjectContent, AI_CONTENT_MODEL } from "./ai-content";
+import { containsBannedKeyword } from "./banned-keywords";
 import type { AmenityIcon, NearbyAmenity, PriceUnit, ProjectWithTier, SalesStatus } from "./types";
 
 /**
@@ -136,10 +139,12 @@ export async function createProject(formData: FormData): Promise<ActionResult> {
       .from("project_location")
       .insert({ project_id: project.id, lat: lat ?? null, lng: lng ?? null });
     if (locationError) {
+      revalidatePath("/admin/du-an");
       return { ok: true, projectId: project.id, warning: `Đã lưu dự án nhưng lưu toạ độ thất bại: ${locationError.message}` };
     }
   }
 
+  revalidatePath("/admin/du-an");
   return { ok: true, projectId: project.id, warning: coordOutOfRangeWarning(lat, lng) };
 }
 
@@ -304,6 +309,14 @@ export async function updateProject(formData: FormData): Promise<ActionResult> {
   const childError = amenitiesError ?? timelineError ?? fitForError;
   if (childError) return { ok: false, error: childError };
 
+  // Bắt buộc — nếu không, Router Cache phía client (điều hướng mềm qua Link/router.push,
+  // KHÔNG liên quan gì tới force-dynamic ở page.tsx) có thể phục vụ lại đúng RSC payload
+  // của /admin/du-an/[id] từ TRƯỚC lần lưu này. Hậu quả không chỉ là hiển thị sai — nếu admin
+  // sửa tiếp trên form đang mang dữ liệu cache cũ rồi lưu lần nữa, sẽ GHI ĐÈ MẤT chính những
+  // gì vừa lưu thành công (đã xảy ra thật, xác nhận qua log ngày hôm nay).
+  revalidatePath(`/admin/du-an/${id}`);
+  revalidatePath("/admin/du-an");
+
   return { ok: true, projectId: id, warning: coordOutOfRangeWarning(lat, lng) };
 }
 
@@ -348,6 +361,8 @@ export async function publishProject(formData: FormData): Promise<ActionResult> 
   if (action === "unpublish") {
     const { error } = await supabaseServer.from("projects").update({ publication_status: "draft" }).eq("id", id);
     if (error) return { ok: false, error: error.message };
+    revalidatePath(`/admin/du-an/${id}`);
+    revalidatePath("/admin/du-an");
     return { ok: true, projectId: id };
   }
 
@@ -382,12 +397,50 @@ export async function publishProject(formData: FormData): Promise<ActionResult> 
     };
   }
 
+  // ---- Nội dung AI (F1) — chỉ sinh nếu CHƯA có, tái dùng nếu đã có (đỡ tốn phí, tránh
+  // nội dung đổi mỗi lần unpublish/publish lại) ----
+  const { data: existingAiContent, error: aiCheckError } = await supabaseServer
+    .from("project_ai_content")
+    .select("id")
+    .eq("project_id", id)
+    .limit(1);
+  if (aiCheckError) return { ok: false, error: aiCheckError.message };
+
+  if (!existingAiContent || existingAiContent.length === 0) {
+    let generated;
+    try {
+      generated = await generateProjectContent(project);
+    } catch (e) {
+      return { ok: false, error: `Sinh nội dung AI thất bại: ${e instanceof Error ? e.message : String(e)}` };
+    }
+
+    const flaggedTexts = [generated.introText, ...generated.faq.map((f) => f.answer)];
+    if (flaggedTexts.some((text) => containsBannedKeyword(text))) {
+      // KHÔNG liệt kê từ nào bị dính trong lỗi trả cho admin — chỉ ghi log phía server.
+      console.error(`[publishProject] Nội dung AI cho dự án ${id} chứa từ khoá không được phép — chặn publish.`);
+      return {
+        ok: false,
+        error: "Nội dung AI sinh ra chứa từ khoá không được phép, vui lòng thử lại hoặc liên hệ hỗ trợ.",
+      };
+    }
+
+    const { error: insertAiError } = await supabaseServer.from("project_ai_content").insert({
+      project_id: id,
+      intro_text: generated.introText,
+      faq_json: generated.faq,
+      model_version: AI_CONTENT_MODEL,
+    });
+    if (insertAiError) return { ok: false, error: insertAiError.message };
+  }
+
   const { error: updateError } = await supabaseServer
     .from("projects")
     .update({ publication_status: "published", updated_at: new Date().toISOString().slice(0, 10) })
     .eq("id", id);
   if (updateError) return { ok: false, error: updateError.message };
 
+  revalidatePath(`/admin/du-an/${id}`);
+  revalidatePath("/admin/du-an");
   return { ok: true, projectId: id };
 }
 
@@ -463,6 +516,7 @@ export async function findNearbyAmenities(projectId: string): Promise<FindNearby
   // Ghi log — miễn phí (cost = 0) nhưng vẫn theo dõi đã quét dự án nào, khi nào (E1).
   await recordApiUsage("osm_overpass", projectId, 0);
 
+  revalidatePath(`/admin/du-an/${projectId}`);
   return { ok: true, amenities, commuteNote };
 }
 
@@ -488,5 +542,6 @@ export async function deleteProject(formData: FormData): Promise<ActionResult> {
     return { ok: false, error: "Không tìm thấy dự án để xoá — có thể đã bị xoá từ trước." };
   }
 
+  revalidatePath("/admin/du-an");
   return { ok: true, projectId: id };
 }

@@ -13,7 +13,7 @@ export function PricingTable({ project, number }: { project: ProjectWithTier; nu
   const table = project.pricing.priceTable;
 
   return (
-    <SpecBlock number={number} title="Sản phẩm & giá">
+    <SpecBlock number={number} title="Sản phẩm & giá" id="section-gia">
       {table && table.length > 0 ? (
         <div className="space-y-2">
           {table.map((entry) => (

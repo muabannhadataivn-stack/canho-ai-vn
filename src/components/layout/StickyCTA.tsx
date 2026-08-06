@@ -1,6 +1,12 @@
 "use client";
 
-export function StickyCTA({ projectName }: { projectName: string }) {
+import { useContactModal } from "@/components/project/ContactModalProvider";
+
+// Dùng chung state mở modal với tab "Tư vấn" trong DetailTabsNav (xem ContactModalProvider) —
+// không tự quản lý state/modal riêng để tránh 2 modal độc lập cùng lúc.
+export function StickyCTA() {
+  const { openContactModal } = useContactModal();
+
   return (
     <div className="sticky bottom-0 flex shrink-0 gap-2.5 border-t border-line bg-white p-3">
       <a
@@ -12,10 +18,7 @@ export function StickyCTA({ projectName }: { projectName: string }) {
       </a>
       <button
         type="button"
-        onClick={() => {
-          // Không có backend nhận lead trong phase này — mở form liên hệ, KHÔNG giả báo đã gửi.
-          window.location.href = `/lien-he?du-an=${encodeURIComponent(projectName)}`;
-        }}
+        onClick={openContactModal}
         className="flex flex-1 items-center justify-center rounded-xl bg-gold px-4 text-[14.5px] font-semibold text-ink"
       >
         Liên hệ tư vấn

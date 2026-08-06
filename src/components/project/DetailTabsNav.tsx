@@ -1,18 +1,30 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useContactModal } from "./ContactModalProvider";
 
-const TABS = [
-  { id: "section-tong-quan", label: "Tổng quan" },
-  { id: "section-tien-do", label: "Tiến độ" },
-  { id: "section-vi-tri", label: "Vị trí" },
-];
+interface ScrollTab {
+  id: string;
+  label: string;
+}
 
-export function DetailTabsNav() {
-  const [active, setActive] = useState(TABS[0]!.id);
+// "Tổng quan" (section-tong-quan) và "Vị trí" (section-vi-tri) LUÔN render vô điều kiện
+// trên trang chi tiết. "Giá" (section-gia) chỉ render khi hasPricingData(project) đúng —
+// nhận qua prop showGia, nếu không tab sẽ trỏ tới anchor không tồn tại trong DOM (đã từng
+// xảy ra thật với tab "Tiến độ" cũ khi dự án không có project_timeline).
+export function DetailTabsNav({ showGia }: { showGia: boolean }) {
+  const { openContactModal } = useContactModal();
+
+  const scrollTabs: ScrollTab[] = [
+    { id: "section-tong-quan", label: "Tổng quan" },
+    { id: "section-vi-tri", label: "Vị trí" },
+    ...(showGia ? [{ id: "section-gia", label: "Giá" }] : []),
+  ];
+
+  const [active, setActive] = useState(scrollTabs[0]!.id);
 
   useEffect(() => {
-    const elements = TABS.map((t) => document.getElementById(t.id)).filter(
+    const elements = scrollTabs.map((t) => document.getElementById(t.id)).filter(
       (el): el is HTMLElement => el !== null
     );
     if (elements.length === 0) return;
@@ -28,11 +40,12 @@ export function DetailTabsNav() {
     );
     elements.forEach((el) => observer.observe(el));
     return () => observer.disconnect();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showGia]);
 
   return (
     <nav className="sticky top-0 z-10 flex gap-1 border-b border-line bg-paper/95 px-3 py-2 backdrop-blur">
-      {TABS.map((tab) => (
+      {scrollTabs.map((tab) => (
         <a
           key={tab.id}
           href={`#${tab.id}`}
@@ -43,6 +56,15 @@ export function DetailTabsNav() {
           {tab.label}
         </a>
       ))}
+      {/* "Tư vấn" LUÔN hiện, KHÔNG cuộn tới section nào — mở ContactModal (dùng chung state
+          với nút StickyCTA qua ContactModalProvider), nên là <button>, không phải <a href>. */}
+      <button
+        type="button"
+        onClick={openContactModal}
+        className="rounded-full px-3.5 py-1.5 text-[13px] font-semibold text-gold transition-colors hover:text-gold-dark"
+      >
+        Tư vấn
+      </button>
     </nav>
   );
 }

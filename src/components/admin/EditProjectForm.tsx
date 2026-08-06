@@ -173,6 +173,13 @@ export function EditProjectForm({ project }: { project: ProjectWithTier }) {
   const priceMinInvalid = priceMin.trim() !== "" && Number.isNaN(Number(priceMin));
   const priceMaxInvalid = priceMax.trim() !== "" && Number.isNaN(Number(priceMax));
 
+  // updateProject() lọc bỏ ÂM THẦM các dòng thiếu field bắt buộc trước khi lưu (tránh chặn
+  // cả form vì 1 dòng lỗi) — nhưng nếu không chặn submit ở đây, admin sẽ không biết dòng vừa
+  // thêm bị mất sau khi lưu. Chặn submit + báo rõ thay vì để mất dữ liệu trong im lặng.
+  const hasInvalidAmenityRow = amenities.some((row) => row.name.trim() === "");
+  const hasInvalidTimelineRow = timeline.some((row) => row.label.trim() === "" || row.date.trim() === "");
+  const hasInvalidFitForRow = fitFor.some((row) => row.text.trim() === "");
+
   const canSubmit =
     name.trim() !== "" &&
     provinceSlug !== "" &&
@@ -180,6 +187,9 @@ export function EditProjectForm({ project }: { project: ProjectWithTier }) {
     !lngInvalid &&
     !priceMinInvalid &&
     !priceMaxInvalid &&
+    !hasInvalidAmenityRow &&
+    !hasInvalidTimelineRow &&
+    !hasInvalidFitForRow &&
     !loading;
 
   async function handleSubmit(e: FormEvent) {
@@ -485,13 +495,16 @@ export function EditProjectForm({ project }: { project: ProjectWithTier }) {
                     </option>
                   ))}
                 </select>
-                <input
-                  type="text"
-                  placeholder="Tên tiện ích"
-                  value={row.name}
-                  onChange={(e) => setAmenities((rows) => rows.map((r, idx) => (idx === i ? { ...r, name: e.target.value } : r)))}
-                  className={inputClass}
-                />
+                <div>
+                  <input
+                    type="text"
+                    placeholder="Tên tiện ích"
+                    value={row.name}
+                    onChange={(e) => setAmenities((rows) => rows.map((r, idx) => (idx === i ? { ...r, name: e.target.value } : r)))}
+                    className={`${inputClass} ${row.name.trim() === "" ? "border-red" : ""}`}
+                  />
+                  {row.name.trim() === "" && <p className="mt-1 text-[11.5px] text-red">Bắt buộc nhập tên.</p>}
+                </div>
                 <input
                   type="text"
                   placeholder="Mô tả ngắn"
@@ -517,6 +530,11 @@ export function EditProjectForm({ project }: { project: ProjectWithTier }) {
             >
               + Thêm tiện ích
             </button>
+            {hasInvalidAmenityRow && (
+              <p className="text-[12px] text-red">
+                Có dòng tiện ích chưa nhập tên — điền tên hoặc bấm Xoá để bỏ dòng trống trước khi lưu.
+              </p>
+            )}
           </div>
         </details>
 
@@ -525,20 +543,24 @@ export function EditProjectForm({ project }: { project: ProjectWithTier }) {
           <div className="mt-4 flex flex-col gap-2.5">
             {timeline.map((row, i) => (
               <div key={i} className="grid grid-cols-[1fr_1fr_auto_auto] items-center gap-2">
-                <input
-                  type="text"
-                  placeholder="Nhãn (VD: Khởi công)"
-                  value={row.label}
-                  onChange={(e) => setTimeline((rows) => rows.map((r, idx) => (idx === i ? { ...r, label: e.target.value } : r)))}
-                  className={inputClass}
-                />
-                <input
-                  type="text"
-                  placeholder="Ngày (VD: Quý 2/2018)"
-                  value={row.date}
-                  onChange={(e) => setTimeline((rows) => rows.map((r, idx) => (idx === i ? { ...r, date: e.target.value } : r)))}
-                  className={inputClass}
-                />
+                <div>
+                  <input
+                    type="text"
+                    placeholder="Nhãn (VD: Khởi công)"
+                    value={row.label}
+                    onChange={(e) => setTimeline((rows) => rows.map((r, idx) => (idx === i ? { ...r, label: e.target.value } : r)))}
+                    className={`${inputClass} ${row.label.trim() === "" ? "border-red" : ""}`}
+                  />
+                </div>
+                <div>
+                  <input
+                    type="text"
+                    placeholder="Ngày (VD: Quý 2/2018)"
+                    value={row.date}
+                    onChange={(e) => setTimeline((rows) => rows.map((r, idx) => (idx === i ? { ...r, date: e.target.value } : r)))}
+                    className={`${inputClass} ${row.date.trim() === "" ? "border-red" : ""}`}
+                  />
+                </div>
                 <label className="flex items-center gap-1.5 text-[13px] text-graphite">
                   <input
                     type="checkbox"
@@ -563,6 +585,11 @@ export function EditProjectForm({ project }: { project: ProjectWithTier }) {
             >
               + Thêm mốc tiến độ
             </button>
+            {hasInvalidTimelineRow && (
+              <p className="text-[12px] text-red">
+                Có mốc tiến độ chưa nhập đủ nhãn/ngày — điền đủ hoặc bấm Xoá để bỏ dòng trống trước khi lưu.
+              </p>
+            )}
           </div>
         </details>
 
@@ -571,13 +598,15 @@ export function EditProjectForm({ project }: { project: ProjectWithTier }) {
           <div className="mt-4 flex flex-col gap-2.5">
             {fitFor.map((row, i) => (
               <div key={i} className="grid grid-cols-[1fr_auto_auto] items-center gap-2">
-                <input
-                  type="text"
-                  placeholder="VD: Gia đình trẻ làm việc khu Đông"
-                  value={row.text}
-                  onChange={(e) => setFitFor((rows) => rows.map((r, idx) => (idx === i ? { ...r, text: e.target.value } : r)))}
-                  className={inputClass}
-                />
+                <div>
+                  <input
+                    type="text"
+                    placeholder="VD: Gia đình trẻ làm việc khu Đông"
+                    value={row.text}
+                    onChange={(e) => setFitFor((rows) => rows.map((r, idx) => (idx === i ? { ...r, text: e.target.value } : r)))}
+                    className={`${inputClass} ${row.text.trim() === "" ? "border-red" : ""}`}
+                  />
+                </div>
                 <label className="flex items-center gap-1.5 text-[13px] text-graphite">
                   <input
                     type="checkbox"
@@ -602,6 +631,11 @@ export function EditProjectForm({ project }: { project: ProjectWithTier }) {
             >
               + Thêm dòng
             </button>
+            {hasInvalidFitForRow && (
+              <p className="text-[12px] text-red">
+                Có dòng chưa nhập nội dung — điền hoặc bấm Xoá để bỏ dòng trống trước khi lưu.
+              </p>
+            )}
           </div>
         </details>
 

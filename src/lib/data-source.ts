@@ -14,6 +14,7 @@ import {
   type ProjectRow,
   type TimelineRow,
 } from "./supabase-mapping";
+import type { FaqEntry } from "./faq-bank";
 import type { Project, ProjectWithTier } from "./types";
 
 /**
@@ -147,6 +148,34 @@ export async function getProjectBySlug(provinceSlug: string, slug: string): Prom
   // để tránh 404 giả khi CTV cần xem trước bản nháp.
   const [project] = await assembleProjects([data as ProjectRow]);
   return project ?? null;
+}
+
+export interface ProjectAiContent {
+  introText: string;
+  faq: FaqEntry[];
+}
+
+/**
+ * Nội dung AI đã sinh (Giai đoạn F1, xem lib/ai-content.ts + admin-actions.ts
+ * publishProject) — null nếu dự án chưa từng publish qua luồng sinh AI (dự án cũ từ
+ * trước F1). Nơi gọi PHẢI tự fallback về buildFaqEntries/intro template khi null,
+ * không được để trang lỗi vì thiếu project_ai_content.
+ */
+export async function getProjectAiContent(projectId: string): Promise<ProjectAiContent | null> {
+  const { data, error } = await supabaseServer
+    .from("project_ai_content")
+    .select("intro_text, faq_json")
+    .eq("project_id", projectId)
+    .order("generated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data || !data.intro_text) return null;
+
+  const faq = (data.faq_json as FaqEntry[] | null) ?? [];
+  if (faq.length === 0) return null;
+
+  return { introText: data.intro_text as string, faq };
 }
 
 export async function getProjectsByProvince(provinceSlug: string): Promise<ProjectWithTier[]> {

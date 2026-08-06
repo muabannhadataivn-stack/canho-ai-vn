@@ -2,6 +2,7 @@ import Link from "next/link";
 import { supabaseServer } from "@/lib/supabase-server";
 import { createSupabaseServerClient } from "@/lib/supabase-server-auth";
 import { AdminProjectRow } from "@/components/admin/AdminProjectRow";
+import { AdminProjectFilters } from "@/components/admin/AdminProjectFilters";
 
 // Bắt buộc fetch luôn tươi (không dùng Next.js Data Cache) — trang admin phải thấy
 // ngay dự án vừa tạo/sửa, không được phục vụ response cache từ request trước.
@@ -21,16 +22,36 @@ interface ProjectListRow {
 
 // Danh sách TOÀN BỘ dự án (cả draft lẫn published) — dùng supabaseServer (service_role)
 // trực tiếp thay vì lib/data-source.ts, vì data-source.ts chỉ trả published cho trang công khai.
-export default async function AdminProjectListPage({ searchParams }: { searchParams: { page?: string } }) {
+export default async function AdminProjectListPage({
+  searchParams,
+}: {
+  searchParams: { page?: string; q?: string; status?: string; province?: string };
+}) {
   const page = Math.max(1, Math.floor(Number(searchParams.page)) || 1);
   const from = (page - 1) * PAGE_SIZE;
   const to = from + PAGE_SIZE - 1;
 
+  const q = (searchParams.q ?? "").trim();
+  const status = searchParams.status === "draft" || searchParams.status === "published" ? searchParams.status : undefined;
+  const province = searchParams.province || undefined;
+
+  // .match() với object rỗng là no-op an toàn — tránh phải gán lại biến query qua nhiều
+  // .not()/.eq() có điều kiện (từng gây lỗi TS2589 "Type instantiation excessively deep").
+  const eqFilters: Record<string, string> = {};
+  if (status) eqFilters.publication_status = status;
+  if (province) eqFilters.province_slug = province;
+
   const [{ count, error: countError }, { data, error }] = await Promise.all([
-    supabaseServer.from("projects").select("*", { count: "exact", head: true }),
+    supabaseServer
+      .from("projects")
+      .select("*", { count: "exact", head: true })
+      .match(eqFilters)
+      .ilike("name", `%${q}%`),
     supabaseServer
       .from("projects")
       .select("id, name, province, publication_status, updated_at")
+      .match(eqFilters)
+      .ilike("name", `%${q}%`)
       .order("updated_at", { ascending: false })
       .range(from, to),
   ]);
@@ -41,6 +62,16 @@ export default async function AdminProjectListPage({ searchParams }: { searchPar
   const projects = (data ?? []) as ProjectListRow[];
   const totalCount = count ?? 0;
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+
+  // Giữ nguyên q/status/province khi chuyển trang — không để bấm Trang sau làm mất bộ lọc.
+  function buildPageHref(targetPage: number): string {
+    const params = new URLSearchParams();
+    if (q) params.set("q", q);
+    if (status) params.set("status", status);
+    if (province) params.set("province", province);
+    params.set("page", String(targetPage));
+    return `/admin/du-an?${params.toString()}`;
+  }
 
   const supabaseAuth = createSupabaseServerClient();
   const {
@@ -78,8 +109,12 @@ export default async function AdminProjectListPage({ searchParams }: { searchPar
         </div>
       </div>
 
+      <AdminProjectFilters />
+
       {projects.length === 0 ? (
-        <p className="text-[14px] text-graphite/60">Chưa có dự án nào.</p>
+        <p className="text-[14px] text-graphite/60">
+          {q || status || province ? "Không có dự án nào khớp bộ lọc." : "Chưa có dự án nào."}
+        </p>
       ) : (
         <>
           <div className="overflow-hidden rounded-2xl border border-line bg-white">
@@ -114,14 +149,14 @@ export default async function AdminProjectListPage({ searchParams }: { searchPar
             </span>
             <div className="flex gap-2">
               {page > 1 ? (
-                <Link href={`/admin/du-an?page=${page - 1}`} className="rounded-full border border-line px-3.5 py-1.5 font-medium text-ink hover:bg-paper-dim">
+                <Link href={buildPageHref(page - 1)} className="rounded-full border border-line px-3.5 py-1.5 font-medium text-ink hover:bg-paper-dim">
                   ← Trang trước
                 </Link>
               ) : (
                 <span className="rounded-full border border-line px-3.5 py-1.5 font-medium text-graphite/30">← Trang trước</span>
               )}
               {page < totalPages ? (
-                <Link href={`/admin/du-an?page=${page + 1}`} className="rounded-full border border-line px-3.5 py-1.5 font-medium text-ink hover:bg-paper-dim">
+                <Link href={buildPageHref(page + 1)} className="rounded-full border border-line px-3.5 py-1.5 font-medium text-ink hover:bg-paper-dim">
                   Trang sau →
                 </Link>
               ) : (

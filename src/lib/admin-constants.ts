@@ -1,11 +1,22 @@
+import { UNRESOLVED_PROVINCE } from "./province-normalize";
 import type { AmenityIcon, PriceUnit, SalesStatus } from "./types";
 
-// Danh sách tỉnh tham khảo từ src/data/projects.seed.ts — mở rộng dần khi có dự án tỉnh mới.
+// PHẢI khớp đúng mọi provinceSlug có thể tồn tại thật trong DB — gồm các tỉnh
+// province-normalize.ts (import CSV) nhận diện được, cộng UNRESOLVED_PROVINCE
+// ("Chưa xác định", fallback khi CSV không nhận diện được tỉnh). Thiếu 1 giá trị ở đây
+// khiến <select> hiện nhầm option đầu tiên (hành vi mặc định của HTML select khi value
+// không khớp option nào) và validate lúc lưu báo sai "Tỉnh/thành không được để trống"
+// dù dự án đã có provinceSlug hợp lệ — đã xảy ra thật với dự án "chua-xac-dinh"/"bac-ninh"/
+// "can-tho"/"da-nang" trước khi thêm đủ vào danh sách này.
 export const PROVINCES: { name: string; slug: string }[] = [
   { name: "TP.HCM", slug: "tp-hcm" },
   { name: "Hà Nội", slug: "ha-noi" },
   { name: "Hưng Yên", slug: "hung-yen" },
   { name: "Đồng Nai", slug: "dong-nai" },
+  { name: "Bắc Ninh", slug: "bac-ninh" },
+  { name: "Cần Thơ", slug: "can-tho" },
+  { name: "Đà Nẵng", slug: "da-nang" },
+  UNRESOLVED_PROVINCE,
 ];
 
 export const SALES_STATUS_OPTIONS: { value: SalesStatus; label: string }[] = [

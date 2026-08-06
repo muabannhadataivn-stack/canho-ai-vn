@@ -5,6 +5,7 @@ import { BackButton } from "@/components/layout/BackButton";
 import { StatusBadge } from "@/components/project/StatusBadge";
 import { StickyCTA } from "@/components/layout/StickyCTA";
 import { DetailTabsNav } from "@/components/project/DetailTabsNav";
+import { ContactModalProvider } from "@/components/project/ContactModalProvider";
 import { QuickInfoGrid } from "@/components/project/QuickInfoGrid";
 import { LocationSection } from "@/components/project/LocationSection";
 import { AmenitiesSection, hasAmenitiesData } from "@/components/project/AmenitiesSection";
@@ -15,7 +16,7 @@ import { FAQSection } from "@/components/project/FAQSection";
 import { RelatedProjects } from "@/components/project/RelatedProjects";
 import { ChoCuDanPromo } from "@/components/project/ChoCuDanPromo";
 import { formatUpdatedDate } from "@/lib/format";
-import { getProjectBySlug, getPublishedProjectParams, getPublishedProjects } from "@/lib/data-source";
+import { getProjectAiContent, getProjectBySlug, getPublishedProjectParams, getPublishedProjects } from "@/lib/data-source";
 import { getRelatedProjects } from "@/lib/related-projects";
 import {
   buildApartmentComplexJsonLd,
@@ -69,7 +70,10 @@ export default async function ProjectDetailPage({ params }: ProjectPageProps) {
 
   const areaLabel = project.district ? `${project.district}, ${project.province}` : project.province;
 
-  // Đoạn mở đầu 100-150 từ — văn bản thật bắt buộc, sinh từ dữ liệu có sẵn (không viết tay tự do).
+  // Giai đoạn F1: ưu tiên nội dung AI đã sinh lúc publish (project_ai_content) — dự án cũ
+  // publish trước F1 chưa có, fallback về đoạn ghép template như trước, KHÔNG để trang lỗi.
+  const aiContent = await getProjectAiContent(project.id);
+
   const introParts: string[] = [
     `${project.name} là dự án căn hộ chung cư tại ${areaLabel}${project.developer ? `, do ${project.developer} phát triển` : ""}.`,
   ];
@@ -81,7 +85,8 @@ export default async function ProjectDetailPage({ params }: ProjectPageProps) {
       ? "Dự án đã bàn giao, thông tin trên trang phục vụ tra cứu tiện ích và tiến độ thực tế."
       : "Thông tin được tổng hợp từ nguồn công khai và cập nhật định kỳ."
   );
-  const intro = introParts.join(" ");
+  const intro = aiContent?.introText || introParts.join(" ");
+  const faqEntries = aiContent?.faq;
 
   // ---- Sắp số H2 tuần tự: chỉ đánh số các section THỰC SỰ hiển thị ----
   const relatedProjects = getRelatedProjects(project, await getPublishedProjects());
@@ -108,12 +113,13 @@ export default async function ProjectDetailPage({ params }: ProjectPageProps) {
   const breadcrumbJsonLd = buildBreadcrumbJsonLd(project);
   const apartmentComplexJsonLd = buildApartmentComplexJsonLd(project);
   const offerJsonLd = buildOfferJsonLd(project);
-  const faqJsonLd = buildFaqJsonLd(project);
+  const faqJsonLd = buildFaqJsonLd(project, faqEntries);
 
   return (
     <div className="flex h-full flex-col bg-paper">
-      {/* JSON-LD sinh từ CÙNG 1 object `project` — buildFaqJsonLd gọi lại đúng buildFaqEntries
-          mà FAQSection dùng để render, đảm bảo khớp 100% giữa HTML hiển thị và schema. */}
+      {/* JSON-LD sinh từ CÙNG 1 object `project` + `faqEntries` — buildFaqJsonLd nhận đúng
+          overrideEntries đã truyền cho FAQSection, đảm bảo khớp 100% giữa HTML hiển thị và
+          schema dù dùng FAQ do AI sinh (F1) hay template mặc định (buildFaqEntries). */}
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }} />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(apartmentComplexJsonLd) }} />
       {offerJsonLd && (
@@ -123,6 +129,7 @@ export default async function ProjectDetailPage({ params }: ProjectPageProps) {
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }} />
       )}
 
+      <ContactModalProvider projectId={project.id} projectName={project.name}>
       <div className="flex-1 overflow-y-auto">
         <div className="relative h-48 shrink-0 bg-ink">
           <Image
@@ -156,7 +163,7 @@ export default async function ProjectDetailPage({ params }: ProjectPageProps) {
           <p className="mt-2.5 text-[13.5px] leading-relaxed text-graphite/75">{intro}</p>
         </div>
 
-        <DetailTabsNav />
+        <DetailTabsNav showGia={hasPricingData(project)} />
 
         <QuickInfoGrid project={project} number={numbers["quick-info"]!} />
         <LocationSection project={project} number={numbers["location"]!} />
@@ -167,15 +174,16 @@ export default async function ProjectDetailPage({ params }: ProjectPageProps) {
         {sectionFlags[3]!.visible && <TimelineSection project={project} number={numbers["timeline"]!} />}
         {sectionFlags[4]!.visible && <PricingTable project={project} number={numbers["pricing"]!} />}
         {sectionFlags[5]!.visible && <FitForSection project={project} number={numbers["fit-for"]!} />}
-        <FAQSection project={project} number={numbers["faq"]!} />
+        <FAQSection project={project} number={numbers["faq"]!} overrideEntries={faqEntries} />
         {sectionFlags[7]!.visible && (
           <RelatedProjects projects={relatedProjects} number={numbers["related"]!} />
         )}
 
         <div className="h-6" />
 
-        <StickyCTA projectName={project.name} />
+        <StickyCTA />
       </div>
+      </ContactModalProvider>
     </div>
   );
 }

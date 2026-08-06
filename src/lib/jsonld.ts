@@ -1,5 +1,5 @@
 import type { ProjectWithTier } from "./types";
-import { buildFaqEntries } from "./faq-bank";
+import { buildFaqEntries, type FaqEntry } from "./faq-bank";
 
 export const SITE_URL = "https://canho.ai.vn";
 
@@ -127,10 +127,12 @@ export function buildOfferJsonLd(project: ProjectWithTier) {
 
 /**
  * FAQPage — chỉ sinh khi có đủ FAQ đang hiển thị, và PHẢI dùng đúng cùng danh sách
- * mà FAQSection component render (buildFaqEntries là nguồn dữ liệu duy nhất).
+ * mà FAQSection component render. overrideEntries (FAQ do AI sinh, F1) PHẢI được truyền
+ * y hệt giá trị đã truyền cho FAQSection ở trang gọi hàm này, để JSON-LD luôn khớp HTML
+ * hiển thị — nếu không truyền, fallback về buildFaqEntries như trước F1.
  */
-export function buildFaqJsonLd(project: ProjectWithTier) {
-  const entries = buildFaqEntries(project);
+export function buildFaqJsonLd(project: ProjectWithTier, overrideEntries?: FaqEntry[]) {
+  const entries = overrideEntries ?? buildFaqEntries(project);
   if (entries.length === 0) return null;
 
   return {

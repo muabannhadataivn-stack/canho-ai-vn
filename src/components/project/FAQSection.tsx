@@ -1,9 +1,21 @@
 import { SpecBlock } from "./SpecBlock";
-import { buildFaqEntries } from "@/lib/faq-bank";
+import { buildFaqEntries, type FaqEntry } from "@/lib/faq-bank";
 import type { ProjectWithTier } from "@/lib/types";
 
-export function FAQSection({ project, number }: { project: ProjectWithTier; number: number }) {
-  const entries = buildFaqEntries(project);
+/**
+ * overrideEntries: dùng khi đã có FAQ do AI sinh (Giai đoạn F1, project_ai_content) —
+ * nếu không truyền (dự án cũ trước F1), tự fallback về buildFaqEntries như trước.
+ */
+export function FAQSection({
+  project,
+  number,
+  overrideEntries,
+}: {
+  project: ProjectWithTier;
+  number: number;
+  overrideEntries?: FaqEntry[];
+}) {
+  const entries = overrideEntries ?? buildFaqEntries(project);
   if (entries.length === 0) return null;
 
   return (
