@@ -16,6 +16,8 @@ interface ProjectListRow {
   id: string;
   name: string;
   province: string;
+  province_slug: string;
+  slug: string;
   publication_status: string;
   updated_at: string;
 }
@@ -49,7 +51,7 @@ export default async function AdminProjectListPage({
       .ilike("name", `%${q}%`),
     supabaseServer
       .from("projects")
-      .select("id, name, province, publication_status, updated_at")
+      .select("id, name, province, province_slug, slug, publication_status, updated_at")
       .match(eqFilters)
       .ilike("name", `%${q}%`)
       .order("updated_at", { ascending: false })
@@ -135,6 +137,8 @@ export default async function AdminProjectListPage({
                     id={p.id}
                     name={p.name}
                     province={p.province}
+                    provinceSlug={p.province_slug}
+                    slug={p.slug}
                     publicationStatus={p.publication_status}
                     updatedAt={p.updated_at}
                   />

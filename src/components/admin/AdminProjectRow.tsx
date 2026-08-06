@@ -9,6 +9,8 @@ interface AdminProjectRowProps {
   id: string;
   name: string;
   province: string;
+  provinceSlug: string;
+  slug: string;
   publicationStatus: string;
   updatedAt: string;
 }
@@ -18,7 +20,7 @@ const HIDE_DELAY_MS = 1200;
 // Toàn bộ hàng là 1 client component (không chỉ riêng nút Xoá) để có thể ẩn dòng ngay
 // (optimistic UI) sau khi xoá thành công — không đợi router.refresh() (round-trip mạng +
 // render lại cả trang) mới cập nhật, tránh cảm giác "chưa xoá được" khiến bấm lại lần 2.
-export function AdminProjectRow({ id, name, province, publicationStatus, updatedAt }: AdminProjectRowProps) {
+export function AdminProjectRow({ id, name, province, provinceSlug, slug, publicationStatus, updatedAt }: AdminProjectRowProps) {
   const router = useRouter();
   const [status, setStatus] = useState<"idle" | "deleting" | "deleted" | "hidden">("idle");
 
@@ -77,18 +79,31 @@ export function AdminProjectRow({ id, name, province, publicationStatus, updated
         </Link>
       </td>
       <td className="px-4 py-2.5">
-        {status === "deleted" ? (
-          <span className="text-[12.5px] font-medium text-green">Đã xoá ✓</span>
-        ) : (
-          <button
-            type="button"
-            onClick={handleDelete}
-            disabled={status === "deleting"}
-            className="rounded-full border border-line px-3 py-1.5 text-[12.5px] font-medium text-red hover:bg-red/5 disabled:opacity-60"
-          >
-            {status === "deleting" ? "Đang xoá..." : "Xoá"}
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {publicationStatus === "published" && (
+            <a
+              href={`/can-ho/${provinceSlug}/${slug}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="rounded-full border border-line px-3 py-1.5 text-[12.5px] font-medium text-ink hover:bg-paper-dim"
+            >
+              Xem
+            </a>
+          )}
+          {status === "deleted" ? (
+            <span className="text-[12.5px] font-medium text-green">Đã xoá ✓</span>
+          ) : (
+            <button
+              type="button"
+              onClick={handleDelete}
+              disabled={status === "deleting"}
+              className="rounded-full border border-line px-3 py-1.5 text-[12.5px] font-medium text-red hover:bg-red/5 disabled:opacity-60"
+            >
+              {status === "deleting" ? "Đang xoá..." : "Xoá"}
+            </button>
+          )}
+        </div>
       </td>
     </tr>
   );
