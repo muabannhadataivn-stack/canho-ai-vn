@@ -5,6 +5,9 @@ import { ContactModal } from "./ContactModal";
 
 interface ContactModalContextValue {
   openContactModal: () => void;
+  // Lộ projectName qua context để StickyCTA (nút SMS) dùng lại — tránh phải truyền thêm prop
+  // xuống qua nhiều lớp component chỉ để lấy đúng 1 giá trị đã có sẵn ở provider.
+  projectName: string;
 }
 
 const ContactModalContext = createContext<ContactModalContextValue | null>(null);
@@ -29,7 +32,7 @@ export function ContactModalProvider({
   const [open, setOpen] = useState(false);
 
   return (
-    <ContactModalContext.Provider value={{ openContactModal: () => setOpen(true) }}>
+    <ContactModalContext.Provider value={{ openContactModal: () => setOpen(true), projectName }}>
       {children}
       {open && <ContactModal projectId={projectId} projectName={projectName} onClose={() => setOpen(false)} />}
     </ContactModalContext.Provider>
