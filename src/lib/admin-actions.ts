@@ -465,3 +465,28 @@ export async function findNearbyAmenities(projectId: string): Promise<FindNearby
 
   return { ok: true, amenities, commuteNote };
 }
+
+// ============================================================
+// deleteProject — D4
+// "on delete cascade" đã có sẵn trên mọi bảng con tham chiếu projects(id) (xem
+// supabase/migrations/20260804000000_init.sql) — chỉ cần xoá hàng projects, DB tự xoá
+// theo project_pricing/project_amenities/project_nearby_amenities/project_timeline/
+// project_location/project_fit_for/project_ai_content/project_price_history.
+// Không thể hoàn tác — nơi gọi (client) BẮT BUỘC window.confirm() trước khi gọi action này.
+// ============================================================
+
+export async function deleteProject(formData: FormData): Promise<ActionResult> {
+  const id = String(formData.get("id") ?? "").trim();
+  if (!id) return { ok: false, error: "Thiếu id dự án." };
+
+  // .select("id") sau delete() để BIẾT CHẮC có dòng nào thực sự bị xoá — DELETE khớp 0 dòng
+  // (id sai/không tồn tại) là no-op hợp lệ về SQL/REST, KHÔNG trả lỗi, nên nếu không kiểm tra
+  // riêng sẽ báo "thành công" giả dù không xoá được gì.
+  const { data, error } = await supabaseServer.from("projects").delete().eq("id", id).select("id");
+  if (error) return { ok: false, error: error.message };
+  if (!data || data.length === 0) {
+    return { ok: false, error: "Không tìm thấy dự án để xoá — có thể đã bị xoá từ trước." };
+  }
+
+  return { ok: true, projectId: id };
+}

@@ -2,7 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { updateProject, publishProject, findNearbyAmenities } from "@/lib/admin-actions";
+import { updateProject, publishProject, findNearbyAmenities, deleteProject } from "@/lib/admin-actions";
 import {
   PROVINCES,
   SALES_STATUS_OPTIONS,
@@ -137,6 +137,31 @@ export function EditProjectForm({ project }: { project: ProjectWithTier }) {
       setNearbyCommuteNote(result.commuteNote);
       setCommuteNote(result.commuteNote); // đồng bộ vào field commuteNote của form, khớp DB vừa cập nhật
     }
+  }
+
+  // Xoá dự án — không thể hoàn tác, BẮT BUỘC window.confirm() trước khi gọi action.
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  async function handleDelete() {
+    const confirmed = window.confirm(`Xoá vĩnh viễn dự án "${project.name}"? Hành động này không thể hoàn tác.`);
+    if (!confirmed) return;
+
+    setDeleteLoading(true);
+    setDeleteError(null);
+
+    const formData = new FormData();
+    formData.set("id", project.id);
+    const result = await deleteProject(formData);
+
+    if (!result.ok) {
+      setDeleteLoading(false);
+      setDeleteError(result.error ?? "Có lỗi khi xoá, thử lại.");
+      return;
+    }
+
+    router.push("/admin/du-an");
+    router.refresh();
   }
 
   const latNum = lat.trim() === "" ? undefined : Number(lat);
@@ -591,6 +616,23 @@ export function EditProjectForm({ project }: { project: ProjectWithTier }) {
           {loading ? "Đang lưu..." : "Lưu thay đổi"}
         </button>
       </form>
+
+      <div className="mt-8 rounded-2xl border border-red/30 bg-red/5 p-4">
+        <div className="mb-2 font-display text-[14px] font-bold text-red">Vùng nguy hiểm</div>
+        <p className="mb-3 text-[12.5px] text-graphite/60">
+          Xoá dự án sẽ xoá vĩnh viễn toàn bộ dữ liệu liên quan (giá, vị trí, tiện ích, tiến độ, đối tượng phù hợp...).
+          Không thể hoàn tác.
+        </p>
+        {deleteError && <p className="mb-3 text-[13px] text-red">{deleteError}</p>}
+        <button
+          type="button"
+          onClick={handleDelete}
+          disabled={deleteLoading}
+          className="rounded-xl border border-red bg-white px-4 py-2.5 text-[13.5px] font-semibold text-red transition-opacity hover:bg-red/10 disabled:opacity-60"
+        >
+          {deleteLoading ? "Đang xoá..." : "Xoá dự án này"}
+        </button>
+      </div>
     </div>
   );
 }

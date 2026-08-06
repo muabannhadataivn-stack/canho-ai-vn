@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { supabaseServer } from "@/lib/supabase-server";
 import { createSupabaseServerClient } from "@/lib/supabase-server-auth";
+import { AdminProjectRow } from "@/components/admin/AdminProjectRow";
 
 // Bắt buộc fetch luôn tươi (không dùng Next.js Data Cache) — trang admin phải thấy
 // ngay dự án vừa tạo/sửa, không được phục vụ response cache từ request trước.
@@ -63,6 +64,12 @@ export default async function AdminProjectListPage({ searchParams }: { searchPar
             Nhập CSV
           </Link>
           <Link
+            href="/admin/du-an/tien-ich-hang-loat"
+            className="rounded-full border border-line px-4 py-2 text-[13.5px] font-semibold text-ink hover:bg-paper-dim"
+          >
+            Quét tiện ích hàng loạt
+          </Link>
+          <Link
             href="/admin/du-an/moi"
             className="rounded-full bg-ink px-4 py-2 text-[13.5px] font-semibold text-paper"
           >
@@ -83,40 +90,19 @@ export default async function AdminProjectListPage({ searchParams }: { searchPar
                   <th className="px-4 py-2.5">Tỉnh/thành</th>
                   <th className="px-4 py-2.5">Trạng thái</th>
                   <th className="px-4 py-2.5">Cập nhật</th>
+                  <th className="px-4 py-2.5"></th>
                 </tr>
               </thead>
               <tbody>
                 {projects.map((p) => (
-                  <tr key={p.id} className="border-t border-line hover:bg-paper-dim">
-                    <td className="p-0">
-                      <Link href={`/admin/du-an/${p.id}`} className="block px-4 py-2.5 font-medium text-ink">
-                        {p.name}
-                      </Link>
-                    </td>
-                    <td className="p-0">
-                      <Link href={`/admin/du-an/${p.id}`} className="block px-4 py-2.5 text-graphite">
-                        {p.province}
-                      </Link>
-                    </td>
-                    <td className="p-0">
-                      <Link href={`/admin/du-an/${p.id}`} className="block px-4 py-2.5">
-                        <span
-                          className={`rounded-full px-2.5 py-1 text-[11.5px] font-semibold ${
-                            p.publication_status === "published"
-                              ? "bg-green/15 text-green"
-                              : "bg-gold/15 text-gold-dark"
-                          }`}
-                        >
-                          {p.publication_status === "published" ? "Đã publish" : "Draft"}
-                        </span>
-                      </Link>
-                    </td>
-                    <td className="p-0">
-                      <Link href={`/admin/du-an/${p.id}`} className="block px-4 py-2.5 text-graphite/70">
-                        {p.updated_at}
-                      </Link>
-                    </td>
-                  </tr>
+                  <AdminProjectRow
+                    key={p.id}
+                    id={p.id}
+                    name={p.name}
+                    province={p.province}
+                    publicationStatus={p.publication_status}
+                    updatedAt={p.updated_at}
+                  />
                 ))}
               </tbody>
             </table>

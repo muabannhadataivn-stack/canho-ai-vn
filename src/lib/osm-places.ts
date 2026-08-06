@@ -1,5 +1,6 @@
 import "server-only";
 import { haversineDistanceMeters } from "./distance";
+import { OVERPASS_RATE_LIMIT_MARKER } from "./admin-constants";
 import type { NearbyAmenity, NearbyCategory } from "./types";
 
 /**
@@ -8,7 +9,10 @@ import type { NearbyAmenity, NearbyCategory } from "./types";
  */
 
 const OVERPASS_ENDPOINT = "https://overpass-api.de/api/interpreter";
-const MIN_DELAY_MS = 1100;
+// server công khai overpass-api.de có thể khắt khe hơn giới hạn công bố lúc tải cao —
+// 3000ms an toàn hơn nhiều so với 1100ms trước đó (từng gặp 429 ở lượt thứ 3).
+const MIN_DELAY_MS = 3000;
+const RETRY_DELAY_MS = 5000;
 
 const CONTACT_EMAIL = process.env.OSM_OVERPASS_CONTACT_EMAIL || "contact@canho.ai.vn";
 const USER_AGENT = `canho.ai.vn/1.0 (contact: ${CONTACT_EMAIL})`;
@@ -70,6 +74,18 @@ async function waitForRateLimit(): Promise<void> {
   lastCallAt = Date.now();
 }
 
+async function postOverpassQuery(query: string): Promise<Response> {
+  return fetch(OVERPASS_ENDPOINT, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      "User-Agent": USER_AGENT,
+    },
+    body: `data=${encodeURIComponent(query)}`,
+    cache: "no-store",
+  });
+}
+
 /**
  * Tìm tiện ích lân cận quanh (lat, lng) trong bán kính radiusMeters, qua 6 category đã
  * định nghĩa ở NearbyCategory (src/lib/types.ts). Bỏ qua kết quả không có tên — không tự
@@ -83,16 +99,20 @@ export async function fetchNearbyAmenities(
   await waitForRateLimit();
 
   const query = buildOverpassQuery(lat, lng, radiusMeters);
-  const response = await fetch(OVERPASS_ENDPOINT, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      "User-Agent": USER_AGENT,
-    },
-    body: `data=${encodeURIComponent(query)}`,
-    cache: "no-store",
-  });
+  let response = await postOverpassQuery(query);
 
+  if (response.status === 429) {
+    // Retry đúng 1 lần sau khi đợi thêm — KHÔNG lặp vô hạn.
+    await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
+    lastCallAt = Date.now(); // tính luôn lượt retry vào rate-limit tracking
+    response = await postOverpassQuery(query);
+  }
+
+  if (response.status === 429) {
+    throw new Error(
+      `${OVERPASS_RATE_LIMIT_MARKER}: Overpass API trả về 429 (Too Many Requests) — đã thử lại 1 lần vẫn bị giới hạn.`
+    );
+  }
   if (!response.ok) {
     throw new Error(`Overpass API trả lỗi ${response.status}: ${response.statusText}`);
   }

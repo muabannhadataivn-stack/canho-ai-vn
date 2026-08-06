@@ -35,3 +35,8 @@ export const AMENITY_ICON_OPTIONS: { value: AmenityIcon; label: string }[] = [
 
 export const VN_LAT_RANGE = { min: 8, max: 24 };
 export const VN_LNG_RANGE = { min: 102, max: 110 };
+
+// Đánh dấu lỗi 429 (rate-limited) từ Overpass API (src/lib/osm-places.ts) để
+// BulkScanClient.tsx (client, không được import file "server-only") nhận diện qua
+// chuỗi lỗi trả về từ Server Action, thay vì phải import trực tiếp module server.
+export const OVERPASS_RATE_LIMIT_MARKER = "OVERPASS_RATE_LIMITED";
