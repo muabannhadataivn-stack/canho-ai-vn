@@ -2,7 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { updateProject, publishProject } from "@/lib/admin-actions";
+import { updateProject, publishProject, findNearbyAmenities, deleteProject } from "@/lib/admin-actions";
 import {
   PROVINCES,
   SALES_STATUS_OPTIONS,
@@ -11,7 +11,8 @@ import {
   VN_LAT_RANGE,
   VN_LNG_RANGE,
 } from "@/lib/admin-constants";
-import type { AmenityIcon, PriceUnit, ProjectWithTier, SalesStatus } from "@/lib/types";
+import { CATEGORY_LABEL as NEARBY_CATEGORY_LABEL } from "@/components/project/AmenitiesSection";
+import type { AmenityIcon, NearbyAmenity, NearbyCategory, PriceUnit, ProjectWithTier, SalesStatus } from "@/lib/types";
 
 interface AmenityRow {
   icon: AmenityIcon;
@@ -101,6 +102,66 @@ export function EditProjectForm({ project }: { project: ProjectWithTier }) {
 
     setPublicationStatus(nextAction === "publish" ? "published" : "draft");
     setPublishMessage(nextAction === "publish" ? "Đã publish dự án — hiện công khai." : "Đã gỡ khỏi publish — chuyển về draft.");
+  }
+
+  // Tìm tiện ích lân cận (OSM Overpass) — dùng toạ độ ĐÃ LƯU của dự án (project.location),
+  // không dùng giá trị lat/lng đang gõ dở trong form nếu chưa bấm "Lưu thay đổi".
+  const hasSavedCoords = project.location.lat !== undefined && project.location.lng !== undefined;
+  const existingNearbyCount = project.nearbyAmenities.length;
+  const [nearbyLoading, setNearbyLoading] = useState(false);
+  const [nearbyError, setNearbyError] = useState<string | null>(null);
+  const [nearbyResult, setNearbyResult] = useState<NearbyAmenity[] | null>(null);
+  const [nearbyCommuteNote, setNearbyCommuteNote] = useState<string | null>(null);
+
+  async function handleFindNearbyAmenities() {
+    if (existingNearbyCount > 0) {
+      const confirmed = window.confirm(
+        `Đã có ${existingNearbyCount} tiện ích lân cận, quét lại sẽ thay thế toàn bộ — tiếp tục?`
+      );
+      if (!confirmed) return;
+    }
+
+    setNearbyLoading(true);
+    setNearbyError(null);
+
+    const result = await findNearbyAmenities(project.id);
+    setNearbyLoading(false);
+
+    if (!result.ok) {
+      setNearbyError(result.error ?? "Có lỗi xảy ra, thử lại.");
+      return;
+    }
+
+    setNearbyResult(result.amenities ?? []);
+    if (result.commuteNote) {
+      setNearbyCommuteNote(result.commuteNote);
+      setCommuteNote(result.commuteNote); // đồng bộ vào field commuteNote của form, khớp DB vừa cập nhật
+    }
+  }
+
+  // Xoá dự án — không thể hoàn tác, BẮT BUỘC window.confirm() trước khi gọi action.
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  async function handleDelete() {
+    const confirmed = window.confirm(`Xoá vĩnh viễn dự án "${project.name}"? Hành động này không thể hoàn tác.`);
+    if (!confirmed) return;
+
+    setDeleteLoading(true);
+    setDeleteError(null);
+
+    const formData = new FormData();
+    formData.set("id", project.id);
+    const result = await deleteProject(formData);
+
+    if (!result.ok) {
+      setDeleteLoading(false);
+      setDeleteError(result.error ?? "Có lỗi khi xoá, thử lại.");
+      return;
+    }
+
+    router.push("/admin/du-an");
+    router.refresh();
   }
 
   const latNum = lat.trim() === "" ? undefined : Number(lat);
@@ -356,6 +417,54 @@ export function EditProjectForm({ project }: { project: ProjectWithTier }) {
               <input type="text" value={commuteNote} onChange={(e) => setCommuteNote(e.target.value)} className={inputClass} />
             </label>
           </div>
+
+          {hasSavedCoords && (
+            <div className="col-span-2 mt-3 border-t border-line pt-3">
+              <button
+                type="button"
+                onClick={handleFindNearbyAmenities}
+                disabled={nearbyLoading}
+                className="rounded-xl border border-line px-3.5 py-2 text-[13px] font-semibold text-ink hover:bg-paper-dim disabled:opacity-60"
+              >
+                {nearbyLoading ? "Đang quét OpenStreetMap..." : "Tìm tiện ích lân cận"}
+              </button>
+              <p className="mt-1 text-[11.5px] text-graphite/50">
+                Dùng toạ độ đã lưu của dự án — nếu vừa sửa lat/lng ở trên, bấm &ldquo;Lưu thay đổi&rdquo; trước.
+              </p>
+
+              {nearbyError && <p className="mt-2 text-[13px] text-red">{nearbyError}</p>}
+
+              {nearbyResult && (
+                <div className="mt-3 rounded-xl border border-line bg-paper p-3 text-[13px]">
+                  <div className="mb-2 font-semibold text-ink">Tìm được {nearbyResult.length} tiện ích lân cận:</div>
+                  {nearbyResult.length === 0 ? (
+                    <p className="text-graphite/60">Không tìm thấy tiện ích nào có tên trong bán kính quét.</p>
+                  ) : (
+                    (Object.keys(NEARBY_CATEGORY_LABEL) as NearbyCategory[]).map((cat) => {
+                      const items = nearbyResult.filter((r) => r.category === cat);
+                      if (items.length === 0) return null;
+                      return (
+                        <div key={cat} className="mb-2">
+                          <div className="text-[12px] font-semibold text-blueprint">{NEARBY_CATEGORY_LABEL[cat]}</div>
+                          {items.map((item) => (
+                            <div key={item.name} className="flex justify-between gap-2 text-graphite">
+                              <span>{item.name}</span>
+                              <span className="shrink-0 font-mono text-[11.5px] text-graphite/50">{item.distanceMeters} m</span>
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })
+                  )}
+                  {nearbyCommuteNote && (
+                    <p className="mt-2 border-t border-line pt-2 text-[12px] text-graphite/60">
+                      Ghi chú di chuyển đã tự cập nhật: {nearbyCommuteNote}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </details>
 
         <details className="rounded-2xl border border-line bg-white p-4">
@@ -507,6 +616,23 @@ export function EditProjectForm({ project }: { project: ProjectWithTier }) {
           {loading ? "Đang lưu..." : "Lưu thay đổi"}
         </button>
       </form>
+
+      <div className="mt-8 rounded-2xl border border-red/30 bg-red/5 p-4">
+        <div className="mb-2 font-display text-[14px] font-bold text-red">Vùng nguy hiểm</div>
+        <p className="mb-3 text-[12.5px] text-graphite/60">
+          Xoá dự án sẽ xoá vĩnh viễn toàn bộ dữ liệu liên quan (giá, vị trí, tiện ích, tiến độ, đối tượng phù hợp...).
+          Không thể hoàn tác.
+        </p>
+        {deleteError && <p className="mb-3 text-[13px] text-red">{deleteError}</p>}
+        <button
+          type="button"
+          onClick={handleDelete}
+          disabled={deleteLoading}
+          className="rounded-xl border border-red bg-white px-4 py-2.5 text-[13.5px] font-semibold text-red transition-opacity hover:bg-red/10 disabled:opacity-60"
+        >
+          {deleteLoading ? "Đang xoá..." : "Xoá dự án này"}
+        </button>
+      </div>
     </div>
   );
 }
