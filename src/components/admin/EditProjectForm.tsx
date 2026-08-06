@@ -2,7 +2,13 @@
 
 import { useState, type ChangeEvent, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { updateProject, publishProject, findNearbyAmenities, deleteProject } from "@/lib/admin-actions";
+import {
+  updateProject,
+  publishProject,
+  findNearbyAmenities,
+  deleteProject,
+  regenerateProjectContent,
+} from "@/lib/admin-actions";
 import {
   PROVINCES,
   SALES_STATUS_OPTIONS,
@@ -33,7 +39,7 @@ const inputClass =
   "w-full rounded-xl border border-line bg-paper px-3 py-2 text-[14px] text-ink outline-none focus:border-blueprint";
 const labelClass = "mb-1 block text-[13px] font-medium text-graphite";
 
-export function EditProjectForm({ project }: { project: ProjectWithTier }) {
+export function EditProjectForm({ project, hasAiContent }: { project: ProjectWithTier; hasAiContent: boolean }) {
   const router = useRouter();
 
   // Ảnh đại diện (hero image) — heroImageFile chỉ set khi admin vừa chọn file mới (chưa upload,
@@ -144,6 +150,33 @@ export function EditProjectForm({ project }: { project: ProjectWithTier }) {
 
     setPublicationStatus(nextAction === "publish" ? "published" : "draft");
     setPublishMessage(nextAction === "publish" ? "Đã publish dự án — hiện công khai." : "Đã gỡ khỏi publish — chuyển về draft.");
+  }
+
+  // Sinh lại nội dung AI (F1 fix) — chỉ chạy khi admin chủ động bấm, dùng đúng dữ liệu mới
+  // nhất (Giá/Tiến độ/Quy mô... vừa sửa). KHÔNG tự động chạy lúc publish — publishProject()
+  // vẫn giữ nguyên hành vi tiết kiệm phí cũ (chỉ sinh nếu chưa từng có).
+  const [regenLoading, setRegenLoading] = useState(false);
+  const [regenError, setRegenError] = useState<string | null>(null);
+  const [regenMessage, setRegenMessage] = useState<string | null>(null);
+
+  async function handleRegenerateContent() {
+    const confirmed = window.confirm(
+      "Sinh lại sẽ thay thế hoàn toàn nội dung AI hiện tại trên trang công khai bằng nội dung mới, dựa theo dữ liệu mới nhất. Tiếp tục?"
+    );
+    if (!confirmed) return;
+
+    setRegenLoading(true);
+    setRegenError(null);
+    setRegenMessage(null);
+
+    const result = await regenerateProjectContent(project.id);
+    setRegenLoading(false);
+
+    if (!result.ok) {
+      setRegenError(result.error ?? "Có lỗi xảy ra, thử lại.");
+      return;
+    }
+    setRegenMessage("Đã sinh lại nội dung AI thành công.");
   }
 
   // Tìm tiện ích lân cận (OSM Overpass) — dùng toạ độ ĐÃ LƯU của dự án (project.location),
@@ -325,6 +358,27 @@ export function EditProjectForm({ project }: { project: ProjectWithTier }) {
         </div>
         {publishMessage && <p className="text-[13px] text-green">{publishMessage}</p>}
         {publishError && <p className="text-[13px] text-red">{publishError}</p>}
+
+        {hasAiContent && (
+          <div className="mt-3 border-t border-gold/30 pt-3">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-[12.5px] text-graphite/60">
+                Sinh lại sẽ thay thế hoàn toàn nội dung hiện tại, dùng đúng số liệu mới nhất — nên dùng sau khi đã sửa xong
+                dữ liệu quan trọng (Giá, Tiến độ, Quy mô...).
+              </p>
+              <button
+                type="button"
+                onClick={handleRegenerateContent}
+                disabled={regenLoading}
+                className="shrink-0 rounded-xl border border-ink px-3.5 py-2 text-[13px] font-semibold text-ink transition-opacity hover:bg-paper-dim disabled:opacity-60"
+              >
+                {regenLoading ? "Đang sinh lại (10–30 giây)..." : "Sinh lại nội dung AI"}
+              </button>
+            </div>
+            {regenMessage && <p className="mt-2 text-[13px] text-green">{regenMessage}</p>}
+            {regenError && <p className="mt-2 text-[13px] text-red">{regenError}</p>}
+          </div>
+        )}
       </div>
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-3">

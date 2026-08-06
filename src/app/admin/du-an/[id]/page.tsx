@@ -9,12 +9,18 @@ import { EditProjectForm } from "@/components/admin/EditProjectForm";
 export const dynamic = "force-dynamic";
 
 export default async function EditProjectPage({ params }: { params: { id: string } }) {
-  const { data, error } = await supabaseServer.from("projects").select("*").eq("id", params.id).maybeSingle();
+  const [{ data, error }, { data: aiContentRows, error: aiContentError }] = await Promise.all([
+    supabaseServer.from("projects").select("*").eq("id", params.id).maybeSingle(),
+    // Chỉ cần biết ĐÃ TỪNG có nội dung AI hay chưa (quyết định hiện nút "Sinh lại nội dung
+    // AI") — không cần nội dung thật, nên chỉ select "id", limit 1.
+    supabaseServer.from("project_ai_content").select("id").eq("project_id", params.id).limit(1),
+  ]);
   if (error) throw error;
   if (!data) notFound();
+  if (aiContentError) throw aiContentError;
 
   const [project] = await assembleProjects([data as ProjectRow]);
   if (!project) notFound();
 
-  return <EditProjectForm project={project} />;
+  return <EditProjectForm project={project} hasAiContent={Boolean(aiContentRows && aiContentRows.length > 0)} />;
 }

@@ -532,6 +532,69 @@ export async function publishProject(formData: FormData): Promise<ActionResult> 
 }
 
 // ============================================================
+// regenerateProjectContent — F1 fix
+// Sinh lại nội dung AI theo dữ liệu MỚI NHẤT của dự án (Giá/Tiến độ/Quy mô... vừa sửa) —
+// admin chủ động bấm khi cần, KHÔNG tự động chạy lúc publish (publishProject() không đổi,
+// vẫn chỉ sinh nếu chưa từng có, xem comment ở đó). INSERT record mới thay vì update-in-place
+// — đúng thiết kế append-only của project_ai_content (xem migration 20260804000000_init.sql:
+// "mỗi lần sinh lại là 1 dòng mới... bản hiện hành là dòng có generated_at mới nhất"), tận
+// dụng nguyên logic đọc đã có ở getProjectAiContent() (data-source.ts) mà không cần sửa gì.
+// ============================================================
+
+export async function regenerateProjectContent(projectId: string): Promise<ActionResult> {
+  if (!projectId) return { ok: false, error: "Thiếu id dự án." };
+
+  const { data: existing, error: existingError } = await supabaseServer
+    .from("project_ai_content")
+    .select("id")
+    .eq("project_id", projectId)
+    .limit(1);
+  if (existingError) return { ok: false, error: existingError.message };
+  if (!existing || existing.length === 0) {
+    return { ok: false, error: "Dự án chưa từng có nội dung AI — publish lần đầu trước khi sinh lại." };
+  }
+
+  const { data: row, error: fetchError } = await supabaseServer.from("projects").select("*").eq("id", projectId).maybeSingle();
+  if (fetchError) return { ok: false, error: fetchError.message };
+  if (!row) return { ok: false, error: "Không tìm thấy dự án." };
+
+  const [project] = await assembleProjects([row as ProjectRow]);
+  if (!project) return { ok: false, error: "Không dựng được dữ liệu dự án." };
+
+  let generated;
+  try {
+    generated = await generateProjectContent(project);
+  } catch (e) {
+    return { ok: false, error: `Sinh nội dung AI thất bại: ${e instanceof Error ? e.message : String(e)}` };
+  }
+
+  const flaggedTexts = [generated.introText, ...generated.faq.map((f) => f.answer)];
+  if (flaggedTexts.some((text) => containsBannedKeyword(text))) {
+    // KHÔNG liệt kê từ nào bị dính trong lỗi trả cho admin — chỉ ghi log phía server, giống publishProject().
+    console.error(`[regenerateProjectContent] Nội dung AI cho dự án ${projectId} chứa từ khoá không được phép — chặn ghi.`);
+    return {
+      ok: false,
+      error: "Nội dung AI sinh ra chứa từ khoá không được phép, vui lòng thử lại hoặc liên hệ hỗ trợ.",
+    };
+  }
+
+  const { error: insertAiError } = await supabaseServer.from("project_ai_content").insert({
+    project_id: projectId,
+    intro_text: generated.introText,
+    faq_json: generated.faq,
+    model_version: AI_CONTENT_MODEL,
+  });
+  if (insertAiError) return { ok: false, error: insertAiError.message };
+
+  revalidatePath(`/admin/du-an/${projectId}`);
+  revalidatePath("/admin/du-an");
+  if (project.publicationStatus === "published") {
+    revalidatePath(`/${project.provinceSlug}/${project.slug}`);
+  }
+  return { ok: true, projectId };
+}
+
+// ============================================================
 // findNearbyAmenities — E2
 // Quét tiện ích lân cận qua Overpass API (OSM), thay toàn bộ project_nearby_amenities
 // của dự án, tự tính commuteNote qua distanceToProvinceCenter và lưu vào project_location.

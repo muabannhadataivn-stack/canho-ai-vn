@@ -172,8 +172,14 @@ export function mapRowToProject(row: ProjectRow, related: ProjectRelatedRows): P
     location,
     media,
     fitFor: related.fitFor.map(mapFitItem),
-    // Chưa có bảng DB cho cross-promo "Chợ Cư Dân" — luôn undefined cho tới khi có bảng riêng.
-    community: undefined,
+    // URL Chợ Cư Dân theo đúng 1 công thức cố định (xác nhận qua ví dụ thật:
+    // chocudan.vn/du-an/akari-city khớp slug "akari-city" có sẵn) — không cần lưu DB, dựng
+    // trực tiếp từ slug lúc render. Luôn dựng được cho MỌI dự án (100% có slug) nên không
+    // còn case undefined nữa.
+    community: {
+      url: `https://www.chocudan.vn/du-an/${row.slug}`,
+      communityName: `Chợ Cư Dân ${row.name}`,
+    },
     publicationStatus: row.publication_status as PublicationStatus,
   };
 }

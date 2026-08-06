@@ -18,7 +18,14 @@ const config: Config = {
         graphite: "#242320",
         line: "#D8D3C7",
         canvas: "#E7E2D8",
-        community: "#E8A33D", // màu thương hiệu Chợ Cư Dân (đã cấp trong prototype)
+        // Chợ Cư Dân — tông xanh rêu riêng biệt (KHÔNG dùng gold, để phân biệt rõ đây là
+        // thương hiệu liên kết khác, không phải CTA chính của canho.ai.vn).
+        community: "#1F6F5C",
+        "community-badge-bg": "#DCEAE5",
+        "community-tagline": "#5C7A73",
+        "community-tag-border": "#D3E4DE",
+        "community-tag-text": "#1A2E29",
+        "community-tag-icon-bg": "#EAF3F0",
       },
       fontFamily: {
         // next/font (Google Fonts self-host) sinh CSS variable trong layout.tsx.

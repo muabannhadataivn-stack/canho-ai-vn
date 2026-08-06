@@ -97,7 +97,7 @@ export interface FitItem {
 }
 
 export interface CommunityLink {
-  /** Chợ Cư Dân — chỉ render khi có url hợp lệ thật sự */
+  /** Chợ Cư Dân — dựng trực tiếp từ slug dự án (xem supabase-mapping.ts), luôn có giá trị. */
   url: string;
   communityName: string;
 }
