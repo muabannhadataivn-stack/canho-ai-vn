@@ -7,7 +7,10 @@ import { VN_LAT_RANGE, VN_LNG_RANGE } from "./admin-constants";
 import type { ProjectRow } from "./supabase-mapping";
 import { hasAmenitiesData } from "@/components/project/AmenitiesSection";
 import { hasPricingData } from "@/components/project/PricingTable";
-import type { AmenityIcon, PriceUnit, ProjectWithTier, SalesStatus } from "./types";
+import { fetchNearbyAmenities } from "./osm-places";
+import { distanceToProvinceCenter } from "./distance";
+import { recordApiUsage } from "./api-budget";
+import type { AmenityIcon, NearbyAmenity, PriceUnit, ProjectWithTier, SalesStatus } from "./types";
 
 /**
  * Server Actions riêng cho khu vực /admin (bảo vệ bởi src/middleware.ts) — KHÔNG import vào
@@ -386,4 +389,79 @@ export async function publishProject(formData: FormData): Promise<ActionResult> 
   if (updateError) return { ok: false, error: updateError.message };
 
   return { ok: true, projectId: id };
+}
+
+// ============================================================
+// findNearbyAmenities — E2
+// Quét tiện ích lân cận qua Overpass API (OSM), thay toàn bộ project_nearby_amenities
+// của dự án, tự tính commuteNote qua distanceToProvinceCenter và lưu vào project_location.
+// ============================================================
+
+export interface FindNearbyAmenitiesResult {
+  ok: boolean;
+  error?: string;
+  amenities?: NearbyAmenity[];
+  commuteNote?: string;
+}
+
+export async function findNearbyAmenities(projectId: string): Promise<FindNearbyAmenitiesResult> {
+  if (!projectId) return { ok: false, error: "Thiếu id dự án." };
+
+  const [{ data: locationRow, error: locationError }, { data: projectRow, error: projectError }] = await Promise.all([
+    supabaseServer.from("project_location").select("lat, lng").eq("project_id", projectId).maybeSingle(),
+    supabaseServer.from("projects").select("province, province_slug").eq("id", projectId).maybeSingle(),
+  ]);
+
+  if (locationError) return { ok: false, error: locationError.message };
+  if (projectError) return { ok: false, error: projectError.message };
+  if (!projectRow) return { ok: false, error: "Không tìm thấy dự án." };
+  if (!locationRow || locationRow.lat === null || locationRow.lng === null) {
+    return { ok: false, error: "Dự án chưa có toạ độ (lat/lng) hợp lệ — lưu toạ độ trước khi quét." };
+  }
+
+  const lat = locationRow.lat as number;
+  const lng = locationRow.lng as number;
+
+  let amenities: NearbyAmenity[];
+  try {
+    amenities = await fetchNearbyAmenities(lat, lng);
+  } catch (e) {
+    return { ok: false, error: `Lỗi khi gọi Overpass API: ${e instanceof Error ? e.message : String(e)}` };
+  }
+
+  const { error: deleteError } = await supabaseServer
+    .from("project_nearby_amenities")
+    .delete()
+    .eq("project_id", projectId);
+  if (deleteError) return { ok: false, error: deleteError.message };
+
+  if (amenities.length > 0) {
+    const { error: insertError } = await supabaseServer.from("project_nearby_amenities").insert(
+      amenities.map((a) => ({
+        project_id: projectId,
+        category: a.category,
+        name: a.name,
+        distance_meters: a.distanceMeters,
+        within_project: false,
+      }))
+    );
+    if (insertError) return { ok: false, error: insertError.message };
+  }
+
+  let commuteNote: string | undefined;
+  const distanceToCenter = distanceToProvinceCenter(lat, lng, projectRow.province_slug);
+  if (distanceToCenter !== null) {
+    const km = (distanceToCenter / 1000).toFixed(1);
+    commuteNote = `Cách trung tâm ${projectRow.province} khoảng ${km} km.`;
+    const { error: updateLocationError } = await supabaseServer
+      .from("project_location")
+      .update({ commute_note: commuteNote })
+      .eq("project_id", projectId);
+    if (updateLocationError) return { ok: false, error: updateLocationError.message };
+  }
+
+  // Ghi log — miễn phí (cost = 0) nhưng vẫn theo dõi đã quét dự án nào, khi nào (E1).
+  await recordApiUsage("osm_overpass", projectId, 0);
+
+  return { ok: true, amenities, commuteNote };
 }
