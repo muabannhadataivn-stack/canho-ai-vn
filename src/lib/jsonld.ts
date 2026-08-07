@@ -7,6 +7,13 @@ export function projectUrl(project: { provinceSlug: string; slug: string }): str
   return `${SITE_URL}/${project.provinceSlug}/${project.slug}`;
 }
 
+// heroImage có thể là path tương đối cũ (fallback tĩnh trong /public, VD "/images/...") HOẶC
+// URL tuyệt đối thật từ Supabase Storage (từ khi có tính năng upload ảnh đại diện) — nối thẳng
+// SITE_URL vào trước 1 URL đã tuyệt đối sẽ ra chuỗi hỏng dạng "https://canho.ai.vnhttps://...".
+export function resolveImageUrl(path: string): string {
+  return path.startsWith("http") ? path : `${SITE_URL}${path}`;
+}
+
 /**
  * BreadcrumbList — luôn có (không phụ thuộc field optional nào).
  */
@@ -76,7 +83,7 @@ export function buildApartmentComplexJsonLd(project: ProjectWithTier) {
   }
 
   if (project.media.heroImage) {
-    node.image = `${SITE_URL}${project.media.heroImage}`;
+    node.image = resolveImageUrl(project.media.heroImage);
   }
 
   return node;

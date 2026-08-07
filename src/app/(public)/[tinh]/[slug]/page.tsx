@@ -24,7 +24,7 @@ import {
   buildFaqJsonLd,
   buildOfferJsonLd,
   projectUrl,
-  SITE_URL,
+  resolveImageUrl,
 } from "@/lib/jsonld";
 
 interface ProjectPageProps {
@@ -54,7 +54,7 @@ export async function generateMetadata({ params }: ProjectPageProps): Promise<Me
       title,
       description,
       url,
-      images: project.media.heroImage ? [`${SITE_URL}${project.media.heroImage}`] : undefined,
+      images: project.media.heroImage ? [resolveImageUrl(project.media.heroImage)] : undefined,
     },
   };
 }

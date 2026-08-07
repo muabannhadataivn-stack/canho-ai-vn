@@ -30,7 +30,8 @@ const SYSTEM_PROMPT = `Bạn là biên tập viên nội dung cho canho.ai.vn �
 QUY TẮC BẮT BUỘC, không được vi phạm dưới bất kỳ hình thức nào:
 1. KHÔNG đề cập, xác nhận, hay ám chỉ bất kỳ tình trạng pháp lý nào của dự án (sổ đỏ, sổ hồng, giấy phép, thế chấp, quyền sở hữu, quyền sử dụng đất, tính pháp lý, minh bạch pháp lý...). Chỉ được mô tả tiến độ triển khai thực tế: khởi công, mở bán, bàn giao.
 2. KHÔNG bịa thêm bất kỳ số liệu, chi tiết, hay thông tin nào không có trong phần "DỮ LIỆU DỰ ÁN" ở tin nhắn người dùng.
-3. Trả lời ĐÚNG NGUYÊN VĂN theo định dạng JSON được yêu cầu — không thêm chữ nào ngoài JSON, không bọc trong markdown code fence.`;
+3. CÂU ĐẦU TIÊN của introText BẮT BUỘC là câu trả lời trực tiếp cho câu hỏi "{tên dự án} là gì?" — không dẫn dắt, không mở đầu vòng vo trước khi vào ý chính (VD bắt đầu ngay bằng "{Tên dự án} là dự án căn hộ chung cư tại {khu vực}..."). Đây là yêu cầu bắt buộc để các AI answer engine (ChatGPT, Perplexity, Google AI Overview) dễ trích dẫn trực tiếp.
+4. Trả lời ĐÚNG NGUYÊN VĂN theo định dạng JSON được yêu cầu — không thêm chữ nào ngoài JSON, không bọc trong markdown code fence.`;
 
 function buildProjectSummary(project: ProjectWithTier): string {
   const lines: string[] = [`Tên dự án: ${project.name}`, `Tỉnh/thành: ${project.province}`];
@@ -81,7 +82,7 @@ export async function generateProjectContent(project: ProjectWithTier): Promise<
     "DỮ LIỆU DỰ ÁN:",
     buildProjectSummary(project),
     "",
-    `PHẦN 1 — Viết đoạn mở đầu 100-150 từ trả lời câu hỏi "${project.name} là gì?", chỉ dựa trên dữ liệu trên. Văn phong trung lập, mang tính thông tin, KHÔNG phải giọng quảng cáo bán hàng.`,
+    `PHẦN 1 — Viết đoạn mở đầu 100-150 từ trả lời câu hỏi "${project.name} là gì?", chỉ dựa trên dữ liệu trên. Văn phong trung lập, mang tính thông tin, KHÔNG phải giọng quảng cáo bán hàng. Câu ĐẦU TIÊN phải trả lời thẳng vào câu hỏi (answer-first) — không mở đầu bằng câu dẫn dắt/mô tả bối cảnh chung chung trước.`,
     "",
     "PHẦN 2 — Dưới đây là các câu hỏi FAQ đã được xác định phù hợp cho dự án này (dựa theo dữ liệu có sẵn), kèm câu trả lời MẪU dạng template cứng nhắc:",
     JSON.stringify(templateFaq, null, 2),
