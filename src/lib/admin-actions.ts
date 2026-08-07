@@ -1,6 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { readFile } from "node:fs/promises";
+import nodePath from "node:path";
+import sharp from "sharp";
 import { supabaseServer } from "./supabase-server";
 import { assembleProjects } from "./data-source";
 import { slugify } from "./slug";
@@ -89,6 +92,52 @@ function extractStoragePath(publicUrl: string): string | null {
   return idx === -1 ? null : publicUrl.slice(idx + marker.length);
 }
 
+// ---- Watermark ảnh đại diện — chỉ áp dụng cho ảnh MỚI upload từ giờ trở đi ----
+const WATERMARK_PATH = nodePath.join(process.cwd(), "public", "images", "canho-watermark.png");
+const WATERMARK_MIN_IMAGE_WIDTH = 200; // ảnh gốc nhỏ hơn ngưỡng này thì bỏ watermark — che gần hết ảnh, phản tác dụng
+const WATERMARK_WIDTH_RATIO = 0.22; // watermark rộng ~22% chiều rộng ảnh gốc (theo tỉ lệ, không cố định px)
+const WATERMARK_MARGIN_PX = 20;
+
+// Đóng watermark (public/images/canho-watermark.png, nền trong suốt ~899x302px) vào góc dưới
+// phải ảnh đại diện. Giữ nguyên định dạng gốc (jpg/png/webp). Lỗi sharp (file hỏng, định dạng
+// lạ, watermark thiếu...) KHÔNG được làm hỏng cả luồng upload — bắt lỗi, log rõ, fallback về
+// buffer ảnh gốc không watermark.
+async function applyWatermark(file: File): Promise<{ buffer: Buffer; contentType: string }> {
+  const originalBuffer = Buffer.from(await file.arrayBuffer());
+
+  try {
+    const image = sharp(originalBuffer);
+    const { width, height } = await image.metadata();
+    if (!width || !height) throw new Error("Không đọc được kích thước ảnh gốc.");
+
+    if (width < WATERMARK_MIN_IMAGE_WIDTH) {
+      return { buffer: originalBuffer, contentType: file.type };
+    }
+
+    const watermarkSource = await readFile(WATERMARK_PATH);
+    const targetWatermarkWidth = Math.round(width * WATERMARK_WIDTH_RATIO);
+    const { data: resizedWatermark, info: watermarkInfo } = await sharp(watermarkSource)
+      .resize({ width: targetWatermarkWidth })
+      .toBuffer({ resolveWithObject: true });
+
+    const left = Math.max(0, width - watermarkInfo.width - WATERMARK_MARGIN_PX);
+    const top = Math.max(0, height - watermarkInfo.height - WATERMARK_MARGIN_PX);
+
+    let composed = image.composite([{ input: resizedWatermark, left, top }]);
+    // sharp cần chỉ định output format tường minh để KHỚP ĐÚNG định dạng gốc — mặc định sharp
+    // sẽ tự chọn theo định dạng input, nhưng chỉ định rõ ở đây để chắc chắn không lệch.
+    if (file.type === "image/png") composed = composed.png();
+    else if (file.type === "image/webp") composed = composed.webp();
+    else composed = composed.jpeg();
+
+    const watermarkedBuffer = await composed.toBuffer();
+    return { buffer: watermarkedBuffer, contentType: file.type };
+  } catch (e) {
+    console.error("[saveHeroImage] Đóng watermark thất bại — dùng ảnh gốc không watermark:", e);
+    return { buffer: originalBuffer, contentType: file.type };
+  }
+}
+
 // Upload ảnh mới (nếu có)/xoá ảnh (nếu bị gỡ) lên Storage, rồi upsert project_media — tách
 // riêng khỏi khối update chính ở updateProject() vì cần đọc row hiện có trước (biết URL cũ để
 // dọn rác Storage khi ảnh bị thay thế/gỡ bỏ).
@@ -128,9 +177,10 @@ async function saveHeroImage(projectId: string, formData: FormData): Promise<str
 
     const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, "_");
     const path = `${projectId}/${Date.now()}-${safeName}`;
+    const { buffer: watermarkedBuffer, contentType } = await applyWatermark(file);
     const { error: uploadError } = await supabaseServer.storage
       .from(HERO_IMAGE_BUCKET)
-      .upload(path, file, { contentType: file.type, upsert: false });
+      .upload(path, watermarkedBuffer, { contentType, upsert: false });
     if (uploadError) return `Upload ảnh thất bại: ${uploadError.message}`;
 
     const { data: publicUrlData } = supabaseServer.storage.from(HERO_IMAGE_BUCKET).getPublicUrl(path);
