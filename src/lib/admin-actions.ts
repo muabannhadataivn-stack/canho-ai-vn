@@ -303,7 +303,7 @@ export async function updateProject(formData: FormData): Promise<ActionResult> {
       updated_at: new Date().toISOString().slice(0, 10),
     })
     .eq("id", id)
-    .select("id");
+    .select("id, slug, publication_status");
 
   if (updateError) {
     if (updateError.code === "23505") {
@@ -314,6 +314,7 @@ export async function updateProject(formData: FormData): Promise<ActionResult> {
   if (!updatedRows || updatedRows.length === 0) {
     return { ok: false, error: "Không tìm thấy dự án — có thể đã bị xoá." };
   }
+  const updatedRow = updatedRows[0]!;
 
   // ---- Giá + vị trí (1-1, upsert theo project_id) ----
   const [pricingRes, locationRes] = await Promise.all([
@@ -404,6 +405,14 @@ export async function updateProject(formData: FormData): Promise<ActionResult> {
   revalidatePath(`/admin/du-an/${id}`);
   revalidatePath("/admin/du-an");
 
+  // THIẾU TỪ TRƯỚC — updateProject() chưa từng revalidate trang công khai, nên sửa dữ liệu
+  // (VD ngày khởi công, trạng thái mở bán) trên 1 dự án ĐÃ publish không bao giờ cập nhật lên
+  // trang tĩnh /{tinh}/{slug} (SSG) cho tới lần build/deploy kế tiếp — đã xác nhận là nguyên
+  // nhân thật (không phải path /can-ho/ cũ như nghi ngờ ban đầu, grep xác nhận không còn sót).
+  if (updatedRow.publication_status === "published") {
+    revalidatePath(`/${provinceSlug}/${updatedRow.slug}`);
+  }
+
   return { ok: true, projectId: id, warning: coordOutOfRangeWarning(lat, lng) };
 }
 
@@ -446,10 +455,18 @@ export async function publishProject(formData: FormData): Promise<ActionResult> 
   }
 
   if (action === "unpublish") {
-    const { error } = await supabaseServer.from("projects").update({ publication_status: "draft" }).eq("id", id);
+    const { data: unpublishedRows, error } = await supabaseServer
+      .from("projects")
+      .update({ publication_status: "draft" })
+      .eq("id", id)
+      .select("province_slug, slug");
     if (error) return { ok: false, error: error.message };
     revalidatePath(`/admin/du-an/${id}`);
     revalidatePath("/admin/du-an");
+    // Cùng bug đã xác nhận với updateProject() — thiếu dòng này thì trang công khai vẫn
+    // hiện nội dung cũ (đã published) dù DB đã chuyển về draft, tới tận lần build/deploy sau.
+    const unpublishedRow = unpublishedRows?.[0];
+    if (unpublishedRow) revalidatePath(`/${unpublishedRow.province_slug}/${unpublishedRow.slug}`);
     return { ok: true, projectId: id };
   }
 
@@ -528,6 +545,9 @@ export async function publishProject(formData: FormData): Promise<ActionResult> 
 
   revalidatePath(`/admin/du-an/${id}`);
   revalidatePath("/admin/du-an");
+  // Cùng bug đã xác nhận với updateProject() — dự án vừa published lần đầu (hoặc publish
+  // lại) phải revalidate ngay trang công khai, không đợi build/deploy sau mới thấy.
+  revalidatePath(`/${project.provinceSlug}/${project.slug}`);
   return { ok: true, projectId: id };
 }
 
@@ -612,7 +632,7 @@ export async function findNearbyAmenities(projectId: string): Promise<FindNearby
 
   const [{ data: locationRow, error: locationError }, { data: projectRow, error: projectError }] = await Promise.all([
     supabaseServer.from("project_location").select("lat, lng").eq("project_id", projectId).maybeSingle(),
-    supabaseServer.from("projects").select("province, province_slug").eq("id", projectId).maybeSingle(),
+    supabaseServer.from("projects").select("province, province_slug, slug, publication_status").eq("id", projectId).maybeSingle(),
   ]);
 
   if (locationError) return { ok: false, error: locationError.message };
@@ -667,6 +687,11 @@ export async function findNearbyAmenities(projectId: string): Promise<FindNearby
   await recordApiUsage("osm_overpass", projectId, 0);
 
   revalidatePath(`/admin/du-an/${projectId}`);
+  // Cùng bug đã xác nhận với updateProject() — quét lại tiện ích lân cận/ghi chú di chuyển
+  // trên 1 dự án ĐÃ publish cũng phải revalidate trang công khai, không chỉ trang admin.
+  if (projectRow.publication_status === "published") {
+    revalidatePath(`/${projectRow.province_slug}/${projectRow.slug}`);
+  }
   return { ok: true, amenities, commuteNote };
 }
 
@@ -686,12 +711,23 @@ export async function deleteProject(formData: FormData): Promise<ActionResult> {
   // .select("id") sau delete() để BIẾT CHẮC có dòng nào thực sự bị xoá — DELETE khớp 0 dòng
   // (id sai/không tồn tại) là no-op hợp lệ về SQL/REST, KHÔNG trả lỗi, nên nếu không kiểm tra
   // riêng sẽ báo "thành công" giả dù không xoá được gì.
-  const { data, error } = await supabaseServer.from("projects").delete().eq("id", id).select("id");
+  const { data, error } = await supabaseServer
+    .from("projects")
+    .delete()
+    .eq("id", id)
+    .select("id, province_slug, slug, publication_status");
   if (error) return { ok: false, error: error.message };
   if (!data || data.length === 0) {
     return { ok: false, error: "Không tìm thấy dự án để xoá — có thể đã bị xoá từ trước." };
   }
 
   revalidatePath("/admin/du-an");
+  // Cùng bug đã xác nhận với updateProject() — nếu dự án vừa xoá ĐANG published, trang công
+  // khai vẫn phục vụ bản HTML tĩnh cũ (dự án "đã xoá" nhưng vẫn xem được) tới tận lần
+  // build/deploy sau nếu không revalidate ngay ở đây.
+  const deletedRow = data[0]!;
+  if (deletedRow.publication_status === "published") {
+    revalidatePath(`/${deletedRow.province_slug}/${deletedRow.slug}`);
+  }
   return { ok: true, projectId: id };
 }

@@ -30,6 +30,13 @@ const nextConfig = {
         destination: "/:tinh/:slug",
         permanent: true,
       },
+      // Đổi URL danh mục tỉnh từ /khu-vuc/{tinh} sang /{tinh} (bỏ tiền tố "khu-vuc", cùng lý do
+      // như trên) — /khu-vuc (không có :tinh, trang liệt kê mọi tỉnh) GIỮ NGUYÊN, không đổi.
+      {
+        source: "/khu-vuc/:tinh",
+        destination: "/:tinh",
+        permanent: true,
+      },
     ];
   },
 };

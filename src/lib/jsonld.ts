@@ -7,6 +7,12 @@ export function projectUrl(project: { provinceSlug: string; slug: string }): str
   return `${SITE_URL}/${project.provinceSlug}/${project.slug}`;
 }
 
+// Dùng chung bởi buildBreadcrumbJsonLd (JSON-LD, máy đọc) VÀ breadcrumb hiển thị trực quan
+// trên trang chi tiết dự án ([tinh]/[slug]/page.tsx) — đảm bảo URL luôn khớp nhau ở cả 2 nơi.
+export function provinceUrl(provinceSlug: string): string {
+  return `${SITE_URL}/${provinceSlug}`;
+}
+
 // heroImage có thể là path tương đối cũ (fallback tĩnh trong /public, VD "/images/...") HOẶC
 // URL tuyệt đối thật từ Supabase Storage (từ khi có tính năng upload ảnh đại diện) — nối thẳng
 // SITE_URL vào trước 1 URL đã tuyệt đối sẽ ra chuỗi hỏng dạng "https://canho.ai.vnhttps://...".
@@ -27,7 +33,7 @@ export function buildBreadcrumbJsonLd(project: ProjectWithTier) {
         "@type": "ListItem",
         position: 2,
         name: project.province,
-        item: `${SITE_URL}/khu-vuc/${project.provinceSlug}`,
+        item: provinceUrl(project.provinceSlug),
       },
       {
         "@type": "ListItem",

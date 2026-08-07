@@ -53,8 +53,8 @@ export default async function HomePage() {
         </Link>
         <div className="flex gap-2 overflow-x-auto no-scrollbar">
           <Chip active>Toàn quốc</Chip>
-          <Chip href="/khu-vuc/tp-hcm">TP.HCM</Chip>
-          <Chip href="/khu-vuc/ha-noi">Hà Nội</Chip>
+          <Chip href="/tp-hcm">TP.HCM</Chip>
+          <Chip href="/ha-noi">Hà Nội</Chip>
         </div>
       </div>
 
@@ -64,7 +64,7 @@ export default async function HomePage() {
           {provinces.map((p) => (
             <Link
               key={p.slug}
-              href={`/khu-vuc/${p.slug}`}
+              href={`/${p.slug}`}
               className="flex min-w-[112px] flex-col gap-1 rounded-2xl border border-line bg-white p-3.5"
             >
               <span className="font-display text-[15px] font-bold text-ink">{p.name}</span>

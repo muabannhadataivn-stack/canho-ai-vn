@@ -2,8 +2,22 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { PROVINCES } from "@/lib/admin-constants";
 
-const NAV_ITEMS = [
+// Trang tỉnh giờ ở /{tinh} (bỏ tiền tố /khu-vuc, xem lần đổi route trước) — {tinh} là dynamic
+// segment ở CẤP GỐC, nên không thể chỉ prefix-match. So khớp đúng segment đầu tiên với danh
+// sách province slug thật (đã gồm UNRESOLVED_PROVINCE "chua-xac-dinh") để không nhận nhầm các
+// route gốc khác cũng 1 segment (/admin, /tim-kiem, /muc-gia, "/"...).
+const PROVINCE_SLUGS = new Set(PROVINCES.map((p) => p.slug));
+
+interface NavItem {
+  href: string;
+  label: string;
+  icon: React.ReactNode;
+  matchExtra?: (pathname: string) => boolean;
+}
+
+const NAV_ITEMS: NavItem[] = [
   {
     href: "/",
     label: "Khám phá",
@@ -20,6 +34,7 @@ const NAV_ITEMS = [
         <circle cx="10" cy="8" r="2.2" stroke="currentColor" strokeWidth="1.6" />
       </>
     ),
+    matchExtra: (pathname) => PROVINCE_SLUGS.has(pathname.split("/")[1] ?? ""),
   },
   {
     href: "/so-sanh",
@@ -46,7 +61,10 @@ export function BottomNav() {
   return (
     <nav className="flex shrink-0 border-t border-line bg-white" aria-label="Điều hướng chính">
       {NAV_ITEMS.map((item) => {
-        const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+        const active =
+          item.href === "/"
+            ? pathname === "/"
+            : pathname.startsWith(item.href) || Boolean(item.matchExtra?.(pathname));
         return (
           <Link
             key={item.href}

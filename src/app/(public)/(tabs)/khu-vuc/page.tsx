@@ -22,7 +22,7 @@ export default async function KhuVucPage() {
           provinces.map((p) => (
             <Link
               key={p.slug}
-              href={`/khu-vuc/${p.slug}`}
+              href={`/${p.slug}`}
               className="flex items-center justify-between rounded-2xl border border-line bg-white px-4 py-3.5"
             >
               <span className="font-display text-[15px] font-bold text-ink">{p.name}</span>

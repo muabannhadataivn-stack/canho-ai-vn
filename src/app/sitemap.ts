@@ -16,7 +16,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const [provinces, publishedProjects] = await Promise.all([getAllProvinces(), getPublishedProjects()]);
 
   const provinceRoutes: MetadataRoute.Sitemap = provinces.map((p) => ({
-    url: `${SITE_URL}/khu-vuc/${p.slug}`,
+    url: `${SITE_URL}/${p.slug}`,
     changeFrequency: "weekly",
     priority: 0.6,
   }));

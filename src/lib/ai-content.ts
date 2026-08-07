@@ -31,11 +31,13 @@ QUY TẮC BẮT BUỘC, không được vi phạm dưới bất kỳ hình thứ
 1. KHÔNG đề cập, xác nhận, hay ám chỉ bất kỳ tình trạng pháp lý nào của dự án (sổ đỏ, sổ hồng, giấy phép, thế chấp, quyền sở hữu, quyền sử dụng đất, tính pháp lý, minh bạch pháp lý...). Chỉ được mô tả tiến độ triển khai thực tế: khởi công, mở bán, bàn giao.
 2. KHÔNG bịa thêm bất kỳ số liệu, chi tiết, hay thông tin nào không có trong phần "DỮ LIỆU DỰ ÁN" ở tin nhắn người dùng.
 3. CÂU ĐẦU TIÊN của introText BẮT BUỘC là câu trả lời trực tiếp cho câu hỏi "{tên dự án} là gì?" — không dẫn dắt, không mở đầu vòng vo trước khi vào ý chính (VD bắt đầu ngay bằng "{Tên dự án} là dự án căn hộ chung cư tại {khu vực}..."). Đây là yêu cầu bắt buộc để các AI answer engine (ChatGPT, Perplexity, Google AI Overview) dễ trích dẫn trực tiếp.
-4. Trả lời ĐÚNG NGUYÊN VĂN theo định dạng JSON được yêu cầu — không thêm chữ nào ngoài JSON, không bọc trong markdown code fence.`;
+4. Nếu phần "DỮ LIỆU DỰ ÁN" có dòng "Địa chỉ" — PHẢI nhắc tới tên đường/phường cụ thể đó trong introText và/hoặc câu FAQ liên quan tới vị trí, thay vì chỉ nói chung chung "trong khu vực {tỉnh}". Nếu KHÔNG có dòng "Địa chỉ", tuyệt đối KHÔNG tự suy đoán hay bịa ra tên đường/phường nào.
+5. Trả lời ĐÚNG NGUYÊN VĂN theo định dạng JSON được yêu cầu — không thêm chữ nào ngoài JSON, không bọc trong markdown code fence.`;
 
 function buildProjectSummary(project: ProjectWithTier): string {
   const lines: string[] = [`Tên dự án: ${project.name}`, `Tỉnh/thành: ${project.province}`];
   if (project.district) lines.push(`Quận/huyện: ${project.district}`);
+  if (project.location.address) lines.push(`Địa chỉ: ${project.location.address}`);
   if (project.developer) lines.push(`Chủ đầu tư: ${project.developer}`);
   if (project.scale) lines.push(`Quy mô: ${project.scale}`);
   if (project.units) lines.push(`Số toà: ${project.units}`);

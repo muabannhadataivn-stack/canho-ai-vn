@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import { notFound } from "next/navigation";
 import { BackButton } from "@/components/layout/BackButton";
+import { Breadcrumb } from "@/components/project/Breadcrumb";
 import { StatusBadge } from "@/components/project/StatusBadge";
 import { StickyCTA } from "@/components/layout/StickyCTA";
 import { DetailTabsNav } from "@/components/project/DetailTabsNav";
@@ -150,7 +151,9 @@ export default async function ProjectDetailPage({ params }: ProjectPageProps) {
           )}
         </div>
 
-        <div className="px-4 pt-4">
+        <Breadcrumb provinceName={project.province} provinceSlug={project.provinceSlug} projectName={project.name} />
+
+        <div className="px-4 pt-2">
           <div className="mb-1.5 flex items-center justify-between">
             <StatusBadge status={project.salesStatus} />
             <span className="font-mono text-[10.5px] text-graphite/45">
