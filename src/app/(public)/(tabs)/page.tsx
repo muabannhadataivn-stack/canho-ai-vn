@@ -42,7 +42,7 @@ export default async function HomePage() {
           Dữ liệu dự án · cập nhật công khai
         </p>
         <h1 className="mb-4 font-display text-[24px] font-bold leading-tight">
-          Tra cứu tiến độ, vị trí và chủ đầu tư dự án căn hộ chung cư
+          Tra cứu tiện ích, vị trí. Chi tiết từng dự án căn hộ chung cư trên toàn quốc
         </h1>
         <Link
           href="/tim-kiem"

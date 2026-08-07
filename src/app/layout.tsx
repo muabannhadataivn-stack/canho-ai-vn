@@ -30,7 +30,7 @@ export const metadata: Metadata = {
     template: "%s | canho.ai.vn",
   },
   description:
-    "Tra cứu tiến độ, vị trí, chủ đầu tư và giá tham khảo dự án căn hộ chung cư — tổng hợp từ nguồn công khai.",
+    "Tra cứu tiện ích, vị trí. Chi tiết từng dự án căn hộ chung cư trên toàn quốc — tổng hợp từ nguồn công khai.",
 };
 
 export const viewport = {
