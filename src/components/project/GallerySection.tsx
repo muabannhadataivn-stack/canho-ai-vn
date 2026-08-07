@@ -12,7 +12,9 @@ export function GallerySection({ project, number }: { project: ProjectWithTier; 
   const images = project.media.gallery ?? [];
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
-  if (images.length === 0) return null;
+  // > 1, không phải > 0 — cùng ngưỡng với hasGalleryData() (lib/gallery.ts): chỉ 1 ảnh duy
+  // nhất (= ảnh bìa) thì carousel này trùng lặp vô nghĩa với banner ảnh bìa đầu trang.
+  if (images.length <= 1) return null;
 
   return (
     <SpecBlock id="section-hinh-anh" number={number} title="Hình ảnh">
