@@ -11,6 +11,7 @@ import {
   saveGalleryImages,
   deleteGalleryImage,
   setCoverImage,
+  saveCoverImage,
   type GalleryImage,
 } from "@/lib/admin-actions";
 import {
@@ -66,6 +67,39 @@ export function EditProjectForm({
   const [galleryWarning, setGalleryWarning] = useState<string | null>(null);
   const [deletingGalleryIds, setDeletingGalleryIds] = useState<Set<string>>(new Set());
   const [settingCoverId, setSettingCoverId] = useState<string | null>(null);
+
+  // Upload ĐƠN ảnh bìa — tách riêng khỏi "+ Thêm ảnh" (multi-file, đang lỗi không mở được hộp
+  // thoại chọn file, nguyên nhân chưa rõ dù đã điều tra sâu). Dùng ĐÚNG pattern <label> bọc
+  // <input type="file"> KHÔNG multiple — pattern đã chứng minh hoạt động trước đây cho "Ảnh
+  // đại diện" cũ, khôi phục khả năng đặt/đổi ảnh bìa ngay, không chờ sửa xong lỗi multi-file.
+  const [coverUploading, setCoverUploading] = useState(false);
+  const [coverError, setCoverError] = useState<string | null>(null);
+  const hasCover = galleryImages.some((img) => img.isCover);
+
+  async function handleCoverImageChange(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // cho phép chọn lại đúng file đó lần sau
+    if (!file) return;
+
+    setCoverUploading(true);
+    setCoverError(null);
+
+    const formData = new FormData();
+    formData.set("coverImageFile", file);
+
+    const result = await saveCoverImage(project.id, formData);
+    setCoverUploading(false);
+
+    if (!result.ok || !result.image) {
+      setCoverError(result.error ?? "Có lỗi xảy ra, thử lại.");
+      return;
+    }
+
+    // Ảnh bìa mới lên đầu danh sách hiển thị (khớp sort_order nhỏ nhất server vừa gán); ảnh
+    // bìa cũ (nếu có) đã bị server xoá — bỏ khỏi state cục bộ, tránh hiện ảnh không còn tồn tại.
+    const newCover = result.image;
+    setGalleryImages((prev) => [newCover, ...prev.filter((img) => !img.isCover)]);
+  }
 
   async function handleGalleryFilesChange(e: ChangeEvent<HTMLInputElement>) {
     const files = e.target.files;
@@ -467,22 +501,37 @@ export function EditProjectForm({
               </div>
             )}
 
-            <label className="cursor-pointer self-start rounded-full border border-line px-3.5 py-1.5 text-[13px] font-medium text-graphite hover:bg-paper-dim">
-              {galleryUploading ? "Đang tải lên..." : "+ Thêm ảnh"}
-              <input
-                type="file"
-                accept="image/jpeg,image/png,image/webp"
-                multiple
-                onChange={handleGalleryFilesChange}
-                className="hidden"
-              />
-            </label>
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="cursor-pointer self-start rounded-full bg-gold px-3.5 py-1.5 text-[13px] font-semibold text-ink hover:opacity-90">
+                {coverUploading ? "Đang tải lên..." : hasCover ? "Đổi ảnh bìa" : "Tải lên ảnh bìa"}
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  onChange={handleCoverImageChange}
+                  disabled={coverUploading}
+                  className="hidden"
+                />
+              </label>
+
+              <label className="cursor-pointer self-start rounded-full border border-line px-3.5 py-1.5 text-[13px] font-medium text-graphite/50 hover:bg-paper-dim">
+                {galleryUploading ? "Đang tải lên..." : "+ Thêm ảnh"}
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  multiple
+                  onChange={handleGalleryFilesChange}
+                  className="hidden"
+                />
+              </label>
+              <span className="text-[11px] font-medium text-red">(hiện chưa hoạt động — đang điều tra)</span>
+            </div>
+            {coverError && <p className="text-[12px] text-red">{coverError}</p>}
             {galleryError && <p className="text-[12px] text-red">{galleryError}</p>}
             {galleryWarning && <p className="text-[12px] text-gold-dark">{galleryWarning}</p>}
             <p className="text-[11.5px] text-graphite/50">
-              JPG, PNG hoặc WEBP, tối đa 5MB/ảnh — chọn được nhiều ảnh cùng lúc. Ảnh đánh dấu &ldquo;Ảnh bìa&rdquo; sẽ
-              hiển thị đầu trang công khai; nếu chưa đặt bìa, ảnh đầu tiên trong album được dùng mặc định. (Nút &ldquo;+
-              Thêm ảnh&rdquo; hiện chưa mở được hộp thoại chọn file — đang tạm gác điều tra, xem ghi chú trong code.)
+              JPG, PNG hoặc WEBP, tối đa 5MB/ảnh. &ldquo;Tải lên/Đổi ảnh bìa&rdquo; luôn hoạt động — thay thế ảnh bìa
+              hiện có nếu đã có. Nút &ldquo;+ Thêm ảnh&rdquo; (chọn nhiều ảnh cùng lúc) hiện chưa mở được hộp thoại
+              chọn file, đang tạm gác điều tra.
             </p>
           </div>
         </details>

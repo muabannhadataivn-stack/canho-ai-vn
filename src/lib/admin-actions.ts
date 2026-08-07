@@ -190,6 +190,80 @@ export async function saveGalleryImages(projectId: string, formData: FormData): 
   return { ok: true, images: inserted, warning: perFileErrors.length > 0 ? perFileErrors.join(" ") : undefined };
 }
 
+export interface SaveCoverImageResult {
+  ok: boolean;
+  error?: string;
+  image?: GalleryImage;
+}
+
+// Upload ĐƠN 1 ảnh, luôn đóng vai trò ẢNH BÌA (is_cover=true) — tách riêng khỏi
+// saveGalleryImages() (multi-file, nút "+ Thêm ảnh" hiện đang lỗi không mở được hộp thoại
+// chọn file, nguyên nhân chưa xác định). Dùng pattern <label> bọc <input type="file"> KHÔNG
+// multiple — đúng pattern đã chứng minh hoạt động trước đây cho "Ảnh đại diện" cũ
+// (project_media, trước khi gộp kiến trúc). Nếu dự án đã có ảnh bìa, THAY THẾ hoàn toàn (xoá
+// ảnh bìa cũ khỏi Storage + DB) sau khi ảnh mới đã lưu thành công.
+export async function saveCoverImage(projectId: string, formData: FormData): Promise<SaveCoverImageResult> {
+  if (!projectId) return { ok: false, error: "Thiếu id dự án." };
+
+  const fileEntry = formData.get("coverImageFile");
+  if (!(fileEntry instanceof File) || fileEntry.size === 0) {
+    return { ok: false, error: "Chưa chọn ảnh nào." };
+  }
+  const file = fileEntry;
+
+  if (!PROJECT_IMAGE_ALLOWED_TYPES.includes(file.type)) {
+    return { ok: false, error: "Ảnh bìa phải là file JPG, PNG hoặc WEBP." };
+  }
+  if (file.size > PROJECT_IMAGE_MAX_BYTES) {
+    return { ok: false, error: "Ảnh bìa vượt quá 5MB." };
+  }
+
+  const { data: existingImages, error: fetchError } = await supabaseServer
+    .from("project_images")
+    .select("id, image_url, sort_order, is_cover")
+    .eq("project_id", projectId);
+  if (fetchError) return { ok: false, error: fetchError.message };
+
+  const oldCover = (existingImages ?? []).find((img) => img.is_cover);
+  const others = (existingImages ?? []).filter((img) => !img.is_cover);
+  // Ảnh bìa mới luôn đứng ĐẦU — sort_order nhỏ hơn mọi ảnh còn lại (tránh trùng sort_order 0
+  // đã dùng bởi ảnh khác nếu ảnh bìa cũ không phải ảnh có sort_order nhỏ nhất).
+  const newSortOrder = others.length > 0 ? Math.min(...others.map((r) => r.sort_order)) - 1 : 0;
+
+  const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, "_");
+  const path = `${projectId}/gallery/${Date.now()}-${safeName}`;
+  const { buffer, contentType } = await applyWatermark(file);
+  const { error: uploadError } = await supabaseServer.storage
+    .from(PROJECT_IMAGE_BUCKET)
+    .upload(path, buffer, { contentType, upsert: false });
+  if (uploadError) return { ok: false, error: `Upload ảnh thất bại: ${uploadError.message}` };
+
+  const { data: publicUrlData } = supabaseServer.storage.from(PROJECT_IMAGE_BUCKET).getPublicUrl(path);
+
+  // Phòng thủ — đảm bảo không còn ảnh nào khác lỡ được đánh dấu bìa trước khi insert ảnh mới.
+  await supabaseServer.from("project_images").update({ is_cover: false }).eq("project_id", projectId);
+
+  const { data: row, error: insertError } = await supabaseServer
+    .from("project_images")
+    .insert({ project_id: projectId, image_url: publicUrlData.publicUrl, sort_order: newSortOrder, is_cover: true })
+    .select("id, image_url, image_alt, is_cover")
+    .single();
+  if (insertError || !row) return { ok: false, error: "Lưu ảnh bìa vào cơ sở dữ liệu thất bại." };
+
+  // Xoá ảnh bìa CŨ (Storage + DB) SAU KHI ảnh mới đã lưu thành công — không mất ảnh bìa nếu
+  // có lỗi xảy ra giữa chừng ở các bước trên.
+  if (oldCover) {
+    const oldPath = extractStoragePath(oldCover.image_url);
+    if (oldPath) await supabaseServer.storage.from(PROJECT_IMAGE_BUCKET).remove([oldPath]);
+    await supabaseServer.from("project_images").delete().eq("id", oldCover.id);
+  }
+
+  revalidatePath(`/admin/du-an/${projectId}`);
+  await revalidatePublicPageIfPublished(projectId);
+
+  return { ok: true, image: { id: row.id, url: row.image_url, alt: row.image_alt ?? "", isCover: row.is_cover } };
+}
+
 export async function deleteGalleryImage(imageId: string): Promise<ActionResult> {
   if (!imageId) return { ok: false, error: "Thiếu id ảnh." };
 
