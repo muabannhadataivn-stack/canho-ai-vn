@@ -12,7 +12,7 @@ export function RelatedProjects({
   if (projects.length === 0) return null;
 
   return (
-    <SpecBlock number={number} title="Dự án tương tự">
+    <SpecBlock number={number} title="Dự án cùng khu vực">
       <div className="space-y-2.5">
         {projects.map((p) => (
           <ProjectCard key={p.id} project={p} />

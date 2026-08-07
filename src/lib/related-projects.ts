@@ -1,8 +1,10 @@
+import { haversineDistanceMeters } from "./distance";
 import type { ProjectWithTier } from "./types";
 
 /**
- * DATA-SCHEMA mục 8: cùng province HOẶC cùng priceTier, tối đa 4, loại trừ chính nó.
- * Không dùng propertyType làm tiêu chí (luôn cố định "can-ho" — so khớp vô nghĩa).
+ * Ưu tiên cùng tỉnh/thành (provinceSlug) trước, sắp theo khoảng cách Haversine gần nhất
+ * (dự án thiếu toạ độ xếp sau cùng trong nhóm cùng tỉnh, vẫn ưu tiên hơn khác tỉnh).
+ * Chỉ bổ sung dự án khác tỉnh khi số lượng cùng tỉnh không đủ `limit`.
  * Nếu không có ứng viên nào → trả mảng rỗng, phía UI phải ẩn cả section (không fallback ngẫu nhiên).
  */
 export function getRelatedProjects(
@@ -10,21 +12,31 @@ export function getRelatedProjects(
   all: ProjectWithTier[],
   limit = 4
 ): ProjectWithTier[] {
-  const candidates = all.filter((p) => {
-    if (p.id === current.id) return false;
-    if (p.publicationStatus !== "published") return false;
-    const sameProvince = p.province === current.province;
-    const samePriceTier =
-      current.priceTier !== null && p.priceTier === current.priceTier;
-    return sameProvince || samePriceTier;
-  });
+  const published = all.filter((p) => p.id !== current.id && p.publicationStatus === "published");
 
-  // Ưu tiên cùng tỉnh trước, rồi tới cùng mức giá.
-  candidates.sort((a, b) => {
-    const aSameProvince = a.province === current.province ? 1 : 0;
-    const bSameProvince = b.province === current.province ? 1 : 0;
-    return bSameProvince - aSameProvince;
-  });
+  const distanceFrom = (p: ProjectWithTier): number | null => {
+    if (current.location.lat === undefined || current.location.lng === undefined) return null;
+    if (p.location.lat === undefined || p.location.lng === undefined) return null;
+    return haversineDistanceMeters(current.location.lat, current.location.lng, p.location.lat, p.location.lng);
+  };
 
-  return candidates.slice(0, limit);
+  // null (thiếu toạ độ) luôn xếp sau các giá trị số.
+  const byDistance = (a: ProjectWithTier, b: ProjectWithTier) => {
+    const da = distanceFrom(a);
+    const db = distanceFrom(b);
+    if (da === null && db === null) return 0;
+    if (da === null) return 1;
+    if (db === null) return -1;
+    return da - db;
+  };
+
+  const sameProvince = published.filter((p) => p.provinceSlug === current.provinceSlug).sort(byDistance);
+
+  if (sameProvince.length >= limit) {
+    return sameProvince.slice(0, limit);
+  }
+
+  const otherProvince = published.filter((p) => p.provinceSlug !== current.provinceSlug).sort(byDistance);
+
+  return [...sameProvince, ...otherProvince].slice(0, limit);
 }
