@@ -103,6 +103,19 @@ async function revalidatePublicPageIfPublished(projectId: string): Promise<void>
   }
 }
 
+// Trang chủ ("Cập nhật gần đây", "Khu vực nổi bật"), "/khu-vuc" và "/{tinh}" đều là trang
+// LIỆT KÊ TỔNG HỢP (không phải trang chi tiết riêng 1 dự án) — revalidatePath(`/{tinh}/{slug}`)
+// KHÔNG đủ để các trang này thấy dự án vừa publish/sửa/xoá. Bug thật đã xảy ra: publishProject()
+// từng thiếu cả 3 path này, khiến dự án mới publish (Bcons Garden, Bình Dương) không hiện ở
+// trang chủ dù trang chi tiết của chính nó vẫn đúng. Gom vào 1 hàm dùng chung ở MỌI action có
+// thể ảnh hưởng dự án ĐÃ publish, để không lặp lại đúng lỗi "quên 1 chỗ" này về sau khi có
+// action mới. CHỈ gọi khi dự án liên quan ĐANG/VỪA publish — action trên dự án Draft không cần.
+function revalidatePublicHomeAndHubs(provinceSlug: string): void {
+  revalidatePath("/");
+  revalidatePath("/khu-vuc");
+  revalidatePath(`/${provinceSlug}`);
+}
+
 // ============================================================
 // saveGalleryImages / deleteGalleryImage / setCoverImage — Album ảnh dự án (project_images)
 // Gộp khái niệm "ảnh đại diện" (hero, project_media cũ) vào đây — ảnh bìa giờ chỉ là 1 ảnh
@@ -573,6 +586,7 @@ export async function updateProject(formData: FormData): Promise<ActionResult> {
   // nhân thật (không phải path /can-ho/ cũ như nghi ngờ ban đầu, grep xác nhận không còn sót).
   if (updatedRow.publication_status === "published") {
     revalidatePath(`/${provinceSlug}/${updatedRow.slug}`);
+    revalidatePublicHomeAndHubs(provinceSlug);
   }
 
   return { ok: true, projectId: id, warning: coordOutOfRangeWarning(lat, lng) };
@@ -628,7 +642,10 @@ export async function publishProject(formData: FormData): Promise<ActionResult> 
     // Cùng bug đã xác nhận với updateProject() — thiếu dòng này thì trang công khai vẫn
     // hiện nội dung cũ (đã published) dù DB đã chuyển về draft, tới tận lần build/deploy sau.
     const unpublishedRow = unpublishedRows?.[0];
-    if (unpublishedRow) revalidatePath(`/${unpublishedRow.province_slug}/${unpublishedRow.slug}`);
+    if (unpublishedRow) {
+      revalidatePath(`/${unpublishedRow.province_slug}/${unpublishedRow.slug}`);
+      revalidatePublicHomeAndHubs(unpublishedRow.province_slug);
+    }
     return { ok: true, projectId: id };
   }
 
@@ -710,6 +727,7 @@ export async function publishProject(formData: FormData): Promise<ActionResult> 
   // Cùng bug đã xác nhận với updateProject() — dự án vừa published lần đầu (hoặc publish
   // lại) phải revalidate ngay trang công khai, không đợi build/deploy sau mới thấy.
   revalidatePath(`/${project.provinceSlug}/${project.slug}`);
+  revalidatePublicHomeAndHubs(project.provinceSlug);
   return { ok: true, projectId: id };
 }
 
@@ -853,6 +871,7 @@ export async function findNearbyAmenities(projectId: string): Promise<FindNearby
   // trên 1 dự án ĐÃ publish cũng phải revalidate trang công khai, không chỉ trang admin.
   if (projectRow.publication_status === "published") {
     revalidatePath(`/${projectRow.province_slug}/${projectRow.slug}`);
+    revalidatePublicHomeAndHubs(projectRow.province_slug);
   }
   return { ok: true, amenities, commuteNote };
 }
@@ -890,6 +909,7 @@ export async function deleteProject(formData: FormData): Promise<ActionResult> {
   const deletedRow = data[0]!;
   if (deletedRow.publication_status === "published") {
     revalidatePath(`/${deletedRow.province_slug}/${deletedRow.slug}`);
+    revalidatePublicHomeAndHubs(deletedRow.province_slug);
   }
   return { ok: true, projectId: id };
 }
