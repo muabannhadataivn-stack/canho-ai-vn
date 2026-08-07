@@ -14,9 +14,11 @@ import { TimelineSection } from "@/components/project/TimelineSection";
 import { PricingTable, hasPricingData } from "@/components/project/PricingTable";
 import { FitForSection } from "@/components/project/FitForSection";
 import { FAQSection } from "@/components/project/FAQSection";
+import { GallerySection } from "@/components/project/GallerySection";
 import { RelatedProjects } from "@/components/project/RelatedProjects";
 import { ChoCuDanPromo } from "@/components/project/ChoCuDanPromo";
 import { formatUpdatedDate } from "@/lib/format";
+import { hasGalleryData } from "@/lib/gallery";
 import { getProjectAiContent, getProjectBySlug, getPublishedProjectParams, getPublishedProjects } from "@/lib/data-source";
 import { getRelatedProjects } from "@/lib/related-projects";
 import {
@@ -99,6 +101,7 @@ export default async function ProjectDetailPage({ params }: ProjectPageProps) {
     { key: "pricing", visible: hasPricingData(project) },
     { key: "fit-for", visible: project.fitFor.length > 0 },
     { key: "faq", visible: true }, // FAQSection tối thiểu luôn có 2 câu (salesStatus + đầu tư)
+    { key: "gallery", visible: hasGalleryData(project) },
     { key: "related", visible: relatedProjects.length > 0 },
   ] as const;
 
@@ -166,7 +169,7 @@ export default async function ProjectDetailPage({ params }: ProjectPageProps) {
           <p className="mt-2.5 text-[13.5px] leading-relaxed text-graphite/75">{intro}</p>
         </div>
 
-        <DetailTabsNav showGia={hasPricingData(project)} />
+        <DetailTabsNav showGia={hasPricingData(project)} showGallery={hasGalleryData(project)} />
 
         <QuickInfoGrid project={project} number={numbers["quick-info"]!} />
         <LocationSection project={project} number={numbers["location"]!} />
@@ -178,7 +181,8 @@ export default async function ProjectDetailPage({ params }: ProjectPageProps) {
         {sectionFlags[4]!.visible && <PricingTable project={project} number={numbers["pricing"]!} />}
         {sectionFlags[5]!.visible && <FitForSection project={project} number={numbers["fit-for"]!} />}
         <FAQSection project={project} number={numbers["faq"]!} overrideEntries={faqEntries} />
-        {sectionFlags[7]!.visible && (
+        {sectionFlags[7]!.visible && <GallerySection project={project} number={numbers["gallery"]!} />}
+        {sectionFlags[8]!.visible && (
           <RelatedProjects projects={relatedProjects} number={numbers["related"]!} />
         )}
 

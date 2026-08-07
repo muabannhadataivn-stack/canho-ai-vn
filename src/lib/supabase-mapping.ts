@@ -94,17 +94,19 @@ export interface NearbyRouteRow {
   type: string;
 }
 
-export interface MediaRow {
-  project_id: string;
-  hero_image_url: string | null;
-  hero_image_alt: string | null;
-}
-
 export interface FitForRow {
   project_id: string;
   text: string;
   caution: boolean;
   sort_order: number;
+}
+
+export interface GalleryImageRow {
+  project_id: string;
+  image_url: string;
+  image_alt: string | null;
+  sort_order: number;
+  is_cover: boolean;
 }
 
 /** Các hàng bảng con đã lọc sẵn theo đúng 1 project_id, dùng để dựng 1 Project. */
@@ -116,8 +118,8 @@ export interface ProjectRelatedRows {
   timeline: TimelineRow[];
   location: LocationRow | undefined;
   nearbyRoutes: NearbyRouteRow[];
-  media: MediaRow | undefined;
   fitFor: FitForRow[];
+  gallery: GalleryImageRow[];
 }
 
 /**
@@ -142,11 +144,16 @@ export function mapRowToProject(row: ProjectRow, related: ProjectRelatedRows): P
     nearbyRoutes: related.nearbyRoutes.length > 0 ? related.nearbyRoutes.map(mapNearbyRoute) : undefined,
   };
 
+  // Ảnh đại diện (hero) KHÔNG còn là bảng riêng (project_media, đã ngừng dùng) — giờ LÀ ảnh
+  // trong project_images được đánh dấu is_cover=true; nếu chưa admin nào bấm "Đặt làm ảnh bìa",
+  // fallback về ảnh đầu tiên theo sort_order (related.gallery đã sort sẵn từ data-source.ts).
+  // Mọi nơi đọc project.media.heroImage/heroImageAlt (page.tsx, generateMetadata, jsonld.ts)
+  // không cần sửa gì — tự động nhận đúng giá trị mới qua chính field cũ này.
+  const coverImage = related.gallery.find((g) => g.is_cover) ?? related.gallery[0];
   const media: ProjectMedia = {
-    heroImage: related.media?.hero_image_url ?? null,
-    heroImageAlt: related.media?.hero_image_alt ?? undefined,
-    // Chưa có bảng lưu gallery nhiều ảnh trong schema hiện tại.
-    gallery: undefined,
+    heroImage: coverImage?.image_url ?? null,
+    heroImageAlt: coverImage?.image_alt ?? undefined,
+    gallery: related.gallery.length > 0 ? related.gallery.map(mapGalleryImage) : undefined,
   };
 
   return {
@@ -222,4 +229,8 @@ function mapNearbyRoute(r: NearbyRouteRow): NearbyRoute {
 
 function mapFitItem(r: FitForRow): FitItem {
   return { text: r.text, caution: r.caution || undefined };
+}
+
+function mapGalleryImage(r: GalleryImageRow): { url: string; alt: string } {
+  return { url: r.image_url, alt: r.image_alt ?? "" };
 }

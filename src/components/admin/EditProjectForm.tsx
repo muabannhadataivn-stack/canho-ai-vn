@@ -8,6 +8,10 @@ import {
   findNearbyAmenities,
   deleteProject,
   regenerateProjectContent,
+  saveGalleryImages,
+  deleteGalleryImage,
+  setCoverImage,
+  type GalleryImage,
 } from "@/lib/admin-actions";
 import {
   PROVINCES,
@@ -39,49 +43,87 @@ const inputClass =
   "w-full rounded-xl border border-line bg-paper px-3 py-2 text-[14px] text-ink outline-none focus:border-blueprint";
 const labelClass = "mb-1 block text-[13px] font-medium text-graphite";
 
-export function EditProjectForm({ project, hasAiContent }: { project: ProjectWithTier; hasAiContent: boolean }) {
+export function EditProjectForm({
+  project,
+  hasAiContent,
+  initialGalleryImages,
+}: {
+  project: ProjectWithTier;
+  hasAiContent: boolean;
+  initialGalleryImages: GalleryImage[];
+}) {
   const router = useRouter();
 
-  // Ảnh đại diện (hero image) — heroImageFile chỉ set khi admin vừa chọn file mới (chưa upload,
-  // upload thật diễn ra trong updateProject() lúc bấm "Lưu thay đổi", giống cách 3 danh sách
-  // động ở dưới chỉ ghi thật lúc submit). heroImagePreview là URL hiển thị <img> ngay (URL thật
-  // đã lưu, hoặc blob: tạm cho file vừa chọn) — heroImageRemoved đánh dấu admin bấm "Xoá ảnh".
-  const [heroImageFile, setHeroImageFile] = useState<File | null>(null);
-  const [heroImagePreview, setHeroImagePreview] = useState<string | null>(project.media.heroImage);
-  const [heroImageAlt, setHeroImageAlt] = useState(project.media.heroImageAlt ?? "");
-  const [heroImageRemoved, setHeroImageRemoved] = useState(false);
-  const [heroImageError, setHeroImageError] = useState<string | null>(null);
+  // Album ảnh dự án (project_images) — gộp chung ảnh bìa + thư viện, KHÁC các field cốt lõi ở
+  // dưới: upload/xoá/đặt bìa đều tức thời từng thao tác (gọi Server Action ngay), không gộp
+  // vào FormData của "Lưu thay đổi". Dùng pattern <label> bọc input (giống các input file khác
+  // trong dự án). LƯU Ý: nút "+ Thêm ảnh" hiện KHÔNG mở được hộp thoại chọn file — đã điều tra
+  // sâu (xác nhận nguyên nhân là export const dynamic = "force-dynamic" ở page.tsx, không phải
+  // lỗi trong component này), tạm gác lại. Chức năng giữ nguyên trong code, chưa dùng được.
+  const [galleryImages, setGalleryImages] = useState<GalleryImage[]>(initialGalleryImages);
+  const [galleryUploading, setGalleryUploading] = useState(false);
+  const [galleryError, setGalleryError] = useState<string | null>(null);
+  const [galleryWarning, setGalleryWarning] = useState<string | null>(null);
+  const [deletingGalleryIds, setDeletingGalleryIds] = useState<Set<string>>(new Set());
+  const [settingCoverId, setSettingCoverId] = useState<string | null>(null);
 
-  const HERO_IMAGE_ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp"];
-  const HERO_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
+  async function handleGalleryFilesChange(e: ChangeEvent<HTMLInputElement>) {
+    const files = e.target.files;
+    e.target.value = ""; // cho phép chọn lại đúng file đó lần sau
+    if (!files || files.length === 0) return;
 
-  function handleHeroImageChange(e: ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = ""; // cho phép chọn lại đúng file đó lần sau (VD: sau khi bấm Xoá ảnh)
-    if (!file) return;
+    setGalleryUploading(true);
+    setGalleryError(null);
+    setGalleryWarning(null);
 
-    if (!HERO_IMAGE_ALLOWED_TYPES.includes(file.type)) {
-      setHeroImageError("Chỉ chấp nhận file JPG, PNG hoặc WEBP.");
+    const formData = new FormData();
+    Array.from(files).forEach((file) => formData.append("galleryFiles", file));
+
+    const result = await saveGalleryImages(project.id, formData);
+    setGalleryUploading(false);
+
+    if (!result.ok) {
+      setGalleryError(result.error ?? "Có lỗi xảy ra, thử lại.");
       return;
     }
-    if (file.size > HERO_IMAGE_MAX_BYTES) {
-      setHeroImageError("Kích thước ảnh tối đa 5MB.");
-      return;
-    }
-
-    setHeroImageError(null);
-    if (heroImagePreview?.startsWith("blob:")) URL.revokeObjectURL(heroImagePreview);
-    setHeroImageFile(file);
-    setHeroImageRemoved(false);
-    setHeroImagePreview(URL.createObjectURL(file));
+    if (result.images) setGalleryImages((prev) => [...prev, ...result.images!]);
+    if (result.warning) setGalleryWarning(result.warning);
   }
 
-  function handleRemoveHeroImage() {
-    if (heroImagePreview?.startsWith("blob:")) URL.revokeObjectURL(heroImagePreview);
-    setHeroImageFile(null);
-    setHeroImagePreview(null);
-    setHeroImageRemoved(true);
-    setHeroImageError(null);
+  async function handleDeleteGalleryImage(imageId: string) {
+    const confirmed = window.confirm("Xoá ảnh này khỏi thư viện? Không thể hoàn tác.");
+    if (!confirmed) return;
+
+    setDeletingGalleryIds((prev) => new Set(prev).add(imageId));
+    setGalleryError(null);
+
+    const result = await deleteGalleryImage(imageId);
+
+    setDeletingGalleryIds((prev) => {
+      const next = new Set(prev);
+      next.delete(imageId);
+      return next;
+    });
+
+    if (!result.ok) {
+      setGalleryError(result.error ?? "Có lỗi khi xoá, thử lại.");
+      return;
+    }
+    setGalleryImages((prev) => prev.filter((img) => img.id !== imageId));
+  }
+
+  async function handleSetCoverImage(imageId: string) {
+    setSettingCoverId(imageId);
+    setGalleryError(null);
+
+    const result = await setCoverImage(imageId);
+    setSettingCoverId(null);
+
+    if (!result.ok) {
+      setGalleryError(result.error ?? "Có lỗi khi đặt ảnh bìa, thử lại.");
+      return;
+    }
+    setGalleryImages((prev) => prev.map((img) => ({ ...img, isCover: img.id === imageId })));
   }
 
   // Thông tin cốt lõi
@@ -299,9 +341,6 @@ export function EditProjectForm({ project, hasAiContent }: { project: ProjectWit
     formData.set("amenitiesJson", JSON.stringify(amenities));
     formData.set("timelineJson", JSON.stringify(timeline));
     formData.set("fitForJson", JSON.stringify(fitFor));
-    if (heroImageFile) formData.set("heroImageFile", heroImageFile);
-    formData.set("heroImageAlt", heroImageAlt);
-    formData.set("heroImageRemoved", heroImageRemoved ? "1" : "0");
 
     const result = await updateProject(formData);
     setLoading(false);
@@ -383,47 +422,66 @@ export function EditProjectForm({ project, hasAiContent }: { project: ProjectWit
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-3">
         <details open className="rounded-2xl border border-line bg-white p-4">
-          <summary className="cursor-pointer font-display text-[15px] font-bold text-ink">Ảnh đại diện</summary>
+          <summary className="cursor-pointer font-display text-[15px] font-bold text-ink">Album ảnh dự án</summary>
           <div className="mt-4 flex flex-col gap-3">
-            {heroImagePreview ? (
-              <div className="relative h-40 w-full max-w-sm overflow-hidden rounded-xl bg-paper-dim">
-                {/* eslint-disable-next-line @next/next/no-img-element -- preview có thể là blob: tạm (file mới chọn, chưa upload), next/image không phục vụ được blob URL */}
-                <img src={heroImagePreview} alt="Xem trước ảnh đại diện" className="h-full w-full object-cover" />
-              </div>
-            ) : (
-              <div className="flex h-40 w-full max-w-sm items-center justify-center rounded-xl border border-dashed border-line text-[12.5px] text-graphite/50">
-                Chưa có ảnh đại diện
+            {galleryImages.length > 0 && (
+              <div className="grid grid-cols-3 gap-2">
+                {galleryImages.map((img) => (
+                  <div
+                    key={img.id}
+                    className={`relative aspect-square overflow-hidden rounded-xl bg-paper-dim ${
+                      img.isCover ? "ring-2 ring-gold ring-offset-2" : ""
+                    }`}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element -- lưới thumbnail admin, URL luôn là Storage URL thật */}
+                    <img src={img.url} alt={img.alt || ""} className="h-full w-full object-cover" />
+                    {img.isCover && (
+                      <span className="absolute left-1 top-1 rounded-full bg-gold px-2 py-0.5 text-[10px] font-semibold text-ink">
+                        Ảnh bìa
+                      </span>
+                    )}
+                    <div className="absolute bottom-1 left-1 right-1 flex gap-1">
+                      {!img.isCover && (
+                        <button
+                          type="button"
+                          onClick={() => handleSetCoverImage(img.id)}
+                          disabled={settingCoverId === img.id}
+                          className="flex-1 rounded-full bg-ink/70 px-1.5 py-0.5 text-[10px] font-semibold text-white disabled:opacity-60"
+                        >
+                          {settingCoverId === img.id ? "..." : "Đặt làm ảnh bìa"}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteGalleryImage(img.id)}
+                        disabled={deletingGalleryIds.has(img.id)}
+                        className="rounded-full bg-ink/70 px-2 py-0.5 text-[10px] font-semibold text-white disabled:opacity-60"
+                      >
+                        {deletingGalleryIds.has(img.id) ? "..." : "Xoá"}
+                      </button>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
 
-            <div className="flex items-center gap-2">
-              <label className="cursor-pointer rounded-full border border-line px-3.5 py-1.5 text-[13px] font-medium text-graphite hover:bg-paper-dim">
-                {heroImagePreview ? "Đổi ảnh khác" : "Chọn ảnh"}
-                <input type="file" accept="image/jpeg,image/png,image/webp" onChange={handleHeroImageChange} className="hidden" />
-              </label>
-              {heroImagePreview && (
-                <button
-                  type="button"
-                  onClick={handleRemoveHeroImage}
-                  className="rounded-full border border-line px-3.5 py-1.5 text-[13px] font-medium text-red hover:bg-red/5"
-                >
-                  Xoá ảnh
-                </button>
-              )}
-            </div>
-            {heroImageError && <p className="text-[12px] text-red">{heroImageError}</p>}
-            <p className="text-[11.5px] text-graphite/50">JPG, PNG hoặc WEBP, tối đa 5MB.</p>
-
-            <label className="block">
-              <span className={labelClass}>Alt text (mô tả ảnh — SEO/accessibility)</span>
+            <label className="cursor-pointer self-start rounded-full border border-line px-3.5 py-1.5 text-[13px] font-medium text-graphite hover:bg-paper-dim">
+              {galleryUploading ? "Đang tải lên..." : "+ Thêm ảnh"}
               <input
-                type="text"
-                value={heroImageAlt}
-                onChange={(e) => setHeroImageAlt(e.target.value)}
-                placeholder="VD: Toàn cảnh dự án X nhìn từ trên cao"
-                className={inputClass}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                multiple
+                onChange={handleGalleryFilesChange}
+                className="hidden"
               />
             </label>
+            {galleryError && <p className="text-[12px] text-red">{galleryError}</p>}
+            {galleryWarning && <p className="text-[12px] text-gold-dark">{galleryWarning}</p>}
+            <p className="text-[11.5px] text-graphite/50">
+              JPG, PNG hoặc WEBP, tối đa 5MB/ảnh — chọn được nhiều ảnh cùng lúc. Ảnh đánh dấu &ldquo;Ảnh bìa&rdquo; sẽ
+              hiển thị đầu trang công khai; nếu chưa đặt bìa, ảnh đầu tiên trong album được dùng mặc định. (Nút &ldquo;+
+              Thêm ảnh&rdquo; hiện chưa mở được hộp thoại chọn file — đang tạm gác điều tra, xem ghi chú trong code.)
+            </p>
           </div>
         </details>
 

@@ -1,11 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { readFile } from "node:fs/promises";
-import nodePath from "node:path";
-import sharp from "sharp";
 import { supabaseServer } from "./supabase-server";
 import { assembleProjects } from "./data-source";
+import { applyWatermark } from "./image-watermark";
 import { slugify } from "./slug";
 import { VN_LAT_RANGE, VN_LNG_RANGE } from "./admin-constants";
 import type { ProjectRow } from "./supabase-mapping";
@@ -75,134 +73,172 @@ function parseJsonArray(raw: FormDataEntryValue | null): unknown[] {
   }
 }
 
-// ---- Ảnh đại diện (hero image) — Supabase Storage bucket "project-images" ----
+// ---- Ảnh dự án (hero image + gallery) — dùng CHUNG bucket Storage "project-images" ----
 // Bucket + policy tạo qua migration 20260808000000_project_images_storage.sql — public đọc,
 // authenticated ghi (dù Server Action này dùng service_role nên bỏ qua RLS, policy chỉ là
 // lớp phòng thủ cho sau này). Giới hạn loại file + kích thước validate lại ở đây (server-side)
 // dù client (EditProjectForm.tsx) đã chặn trước — không tin tưởng hoàn toàn validate phía client.
-const HERO_IMAGE_BUCKET = "project-images";
-const HERO_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
-const HERO_IMAGE_ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp"];
+const PROJECT_IMAGE_BUCKET = "project-images";
+const PROJECT_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
+const PROJECT_IMAGE_ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp"];
 
 // public URL Supabase Storage có dạng .../object/public/{bucket}/{path} — cắt lấy đúng phần
-// {path} để gọi .remove() dọn file cũ khi ảnh bị thay thế/gỡ bỏ.
+// {path} để gọi .remove() dọn file cũ/đã xoá.
 function extractStoragePath(publicUrl: string): string | null {
-  const marker = `/object/public/${HERO_IMAGE_BUCKET}/`;
+  const marker = `/object/public/${PROJECT_IMAGE_BUCKET}/`;
   const idx = publicUrl.indexOf(marker);
   return idx === -1 ? null : publicUrl.slice(idx + marker.length);
 }
 
-// ---- Watermark ảnh đại diện — chỉ áp dụng cho ảnh MỚI upload từ giờ trở đi ----
-const WATERMARK_PATH = nodePath.join(process.cwd(), "public", "images", "canho-watermark.png");
-const WATERMARK_MIN_IMAGE_WIDTH = 200; // ảnh gốc nhỏ hơn ngưỡng này thì bỏ watermark — che gần hết ảnh, phản tác dụng
-const WATERMARK_WIDTH_RATIO = 0.22; // watermark rộng ~22% chiều rộng ảnh gốc (theo tỉ lệ, không cố định px)
-const WATERMARK_MARGIN_PX = 20;
-
-// Đóng watermark (public/images/canho-watermark.png, nền trong suốt ~899x302px) vào góc dưới
-// phải ảnh đại diện. Giữ nguyên định dạng gốc (jpg/png/webp). Lỗi sharp (file hỏng, định dạng
-// lạ, watermark thiếu...) KHÔNG được làm hỏng cả luồng upload — bắt lỗi, log rõ, fallback về
-// buffer ảnh gốc không watermark.
-async function applyWatermark(file: File): Promise<{ buffer: Buffer; contentType: string }> {
-  const originalBuffer = Buffer.from(await file.arrayBuffer());
-
-  try {
-    const image = sharp(originalBuffer);
-    const { width, height } = await image.metadata();
-    if (!width || !height) throw new Error("Không đọc được kích thước ảnh gốc.");
-
-    if (width < WATERMARK_MIN_IMAGE_WIDTH) {
-      return { buffer: originalBuffer, contentType: file.type };
-    }
-
-    const watermarkSource = await readFile(WATERMARK_PATH);
-    const targetWatermarkWidth = Math.round(width * WATERMARK_WIDTH_RATIO);
-    const { data: resizedWatermark, info: watermarkInfo } = await sharp(watermarkSource)
-      .resize({ width: targetWatermarkWidth })
-      .toBuffer({ resolveWithObject: true });
-
-    const left = Math.max(0, width - watermarkInfo.width - WATERMARK_MARGIN_PX);
-    const top = Math.max(0, height - watermarkInfo.height - WATERMARK_MARGIN_PX);
-
-    let composed = image.composite([{ input: resizedWatermark, left, top }]);
-    // sharp cần chỉ định output format tường minh để KHỚP ĐÚNG định dạng gốc — mặc định sharp
-    // sẽ tự chọn theo định dạng input, nhưng chỉ định rõ ở đây để chắc chắn không lệch.
-    if (file.type === "image/png") composed = composed.png();
-    else if (file.type === "image/webp") composed = composed.webp();
-    else composed = composed.jpeg();
-
-    const watermarkedBuffer = await composed.toBuffer();
-    return { buffer: watermarkedBuffer, contentType: file.type };
-  } catch (e) {
-    console.error("[saveHeroImage] Đóng watermark thất bại — dùng ảnh gốc không watermark:", e);
-    return { buffer: originalBuffer, contentType: file.type };
+// revalidatePath trang công khai CHỈ khi dự án đang published — dùng chung bởi
+// saveGalleryImages(), deleteGalleryImage(), setCoverImage() để không lặp lại cùng 1 query.
+async function revalidatePublicPageIfPublished(projectId: string): Promise<void> {
+  const { data: projectRow } = await supabaseServer
+    .from("projects")
+    .select("province_slug, slug, publication_status")
+    .eq("id", projectId)
+    .maybeSingle();
+  if (projectRow?.publication_status === "published") {
+    revalidatePath(`/${projectRow.province_slug}/${projectRow.slug}`);
   }
 }
 
-// Upload ảnh mới (nếu có)/xoá ảnh (nếu bị gỡ) lên Storage, rồi upsert project_media — tách
-// riêng khỏi khối update chính ở updateProject() vì cần đọc row hiện có trước (biết URL cũ để
-// dọn rác Storage khi ảnh bị thay thế/gỡ bỏ).
-async function saveHeroImage(projectId: string, formData: FormData): Promise<string | null> {
-  const fileEntry = formData.get("heroImageFile");
-  const altRaw = String(formData.get("heroImageAlt") ?? "").trim();
-  const removed = String(formData.get("heroImageRemoved") ?? "") === "1";
-  const hasNewFile = fileEntry instanceof File && fileEntry.size > 0;
+// ============================================================
+// saveGalleryImages / deleteGalleryImage / setCoverImage — Album ảnh dự án (project_images)
+// Gộp khái niệm "ảnh đại diện" (hero, project_media cũ) vào đây — ảnh bìa giờ chỉ là 1 ảnh
+// trong album được đánh dấu is_cover=true (xem setCoverImage() + supabase-mapping.ts). Upload/
+// xoá/đặt bìa đều tức thời từng thao tác, không gộp vào FormData của "Lưu thay đổi".
+// từng thao tác (KHÔNG gộp vào FormData của "Lưu thay đổi" như amenities/timeline/fitFor) —
+// khớp cách handleFindNearbyAmenities/handlePublishToggle/handleDelete đã hoạt động trong
+// EditProjectForm.tsx: bấm là chạy ngay, không đợi submit cả form.
+// ============================================================
 
-  const { data: existing } = await supabaseServer
-    .from("project_media")
-    .select("hero_image_url")
-    .eq("project_id", projectId)
-    .maybeSingle();
+export interface GalleryImage {
+  id: string;
+  url: string;
+  alt: string;
+  isCover: boolean;
+}
 
-  // Không đổi ảnh — chỉ có thể đổi alt text, giữ nguyên hero_image_url hiện có (không ghi đè null).
-  if (!hasNewFile && !removed) {
-    const { error } = await supabaseServer
-      .from("project_media")
-      .upsert(
-        { project_id: projectId, hero_image_url: existing?.hero_image_url ?? null, hero_image_alt: altRaw || null },
-        { onConflict: "project_id" }
-      );
-    return error?.message ?? null;
-  }
+export interface SaveGalleryImagesResult {
+  ok: boolean;
+  error?: string;
+  warning?: string;
+  images?: GalleryImage[];
+}
 
-  const oldPath = existing?.hero_image_url ? extractStoragePath(existing.hero_image_url) : null;
+export async function saveGalleryImages(projectId: string, formData: FormData): Promise<SaveGalleryImagesResult> {
+  if (!projectId) return { ok: false, error: "Thiếu id dự án." };
 
-  if (hasNewFile) {
-    const file = fileEntry as File;
-    if (!HERO_IMAGE_ALLOWED_TYPES.includes(file.type)) {
-      return "Ảnh đại diện phải là file JPG, PNG hoặc WEBP.";
+  const files = formData.getAll("galleryFiles").filter((f): f is File => f instanceof File && f.size > 0);
+  if (files.length === 0) return { ok: false, error: "Chưa chọn ảnh nào." };
+
+  // Nối vào CUỐI danh sách ảnh hiện có — không ghi đè thứ tự ảnh đã có sẵn.
+  const { count: existingCount } = await supabaseServer
+    .from("project_images")
+    .select("*", { count: "exact", head: true })
+    .eq("project_id", projectId);
+  let nextSortOrder = existingCount ?? 0;
+
+  const inserted: GalleryImage[] = [];
+  const perFileErrors: string[] = [];
+
+  for (const file of files) {
+    if (!PROJECT_IMAGE_ALLOWED_TYPES.includes(file.type)) {
+      perFileErrors.push(`${file.name}: phải là JPG, PNG hoặc WEBP.`);
+      continue;
     }
-    if (file.size > HERO_IMAGE_MAX_BYTES) {
-      return "Ảnh đại diện vượt quá 5MB.";
+    if (file.size > PROJECT_IMAGE_MAX_BYTES) {
+      perFileErrors.push(`${file.name}: vượt quá 5MB.`);
+      continue;
     }
 
     const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, "_");
-    const path = `${projectId}/${Date.now()}-${safeName}`;
-    const { buffer: watermarkedBuffer, contentType } = await applyWatermark(file);
+    // Path riêng "gallery/" để phân biệt hoàn toàn với ảnh đại diện cũ trong cùng bucket.
+    const path = `${projectId}/gallery/${Date.now()}-${safeName}`;
+    const { buffer, contentType } = await applyWatermark(file);
     const { error: uploadError } = await supabaseServer.storage
-      .from(HERO_IMAGE_BUCKET)
-      .upload(path, watermarkedBuffer, { contentType, upsert: false });
-    if (uploadError) return `Upload ảnh thất bại: ${uploadError.message}`;
+      .from(PROJECT_IMAGE_BUCKET)
+      .upload(path, buffer, { contentType, upsert: false });
+    if (uploadError) {
+      perFileErrors.push(`${file.name}: upload thất bại (${uploadError.message}).`);
+      continue;
+    }
 
-    const { data: publicUrlData } = supabaseServer.storage.from(HERO_IMAGE_BUCKET).getPublicUrl(path);
+    const { data: publicUrlData } = supabaseServer.storage.from(PROJECT_IMAGE_BUCKET).getPublicUrl(path);
+    const { data: row, error: insertError } = await supabaseServer
+      .from("project_images")
+      .insert({ project_id: projectId, image_url: publicUrlData.publicUrl, sort_order: nextSortOrder })
+      .select("id, image_url, image_alt, is_cover")
+      .single();
+    if (insertError || !row) {
+      perFileErrors.push(`${file.name}: lưu vào cơ sở dữ liệu thất bại.`);
+      continue;
+    }
 
-    // Dọn file cũ SAU khi upload file mới thành công — không chặn lưu nếu dọn rác lỗi.
-    if (oldPath) await supabaseServer.storage.from(HERO_IMAGE_BUCKET).remove([oldPath]);
-
-    const { error } = await supabaseServer
-      .from("project_media")
-      .upsert(
-        { project_id: projectId, hero_image_url: publicUrlData.publicUrl, hero_image_alt: altRaw || null },
-        { onConflict: "project_id" }
-      );
-    return error?.message ?? null;
+    nextSortOrder += 1;
+    inserted.push({ id: row.id, url: row.image_url, alt: row.image_alt ?? "", isCover: row.is_cover });
   }
 
-  // removed === true, không có file mới thay thế.
-  if (oldPath) await supabaseServer.storage.from(HERO_IMAGE_BUCKET).remove([oldPath]);
-  const { error } = await supabaseServer
-    .from("project_media")
-    .upsert({ project_id: projectId, hero_image_url: null, hero_image_alt: null }, { onConflict: "project_id" });
-  return error?.message ?? null;
+  if (inserted.length === 0) {
+    return { ok: false, error: perFileErrors.join(" ") || "Upload thất bại." };
+  }
+
+  revalidatePath(`/admin/du-an/${projectId}`);
+  await revalidatePublicPageIfPublished(projectId);
+
+  return { ok: true, images: inserted, warning: perFileErrors.length > 0 ? perFileErrors.join(" ") : undefined };
+}
+
+export async function deleteGalleryImage(imageId: string): Promise<ActionResult> {
+  if (!imageId) return { ok: false, error: "Thiếu id ảnh." };
+
+  const { data: row, error: fetchError } = await supabaseServer
+    .from("project_images")
+    .select("project_id, image_url")
+    .eq("id", imageId)
+    .maybeSingle();
+  if (fetchError) return { ok: false, error: fetchError.message };
+  if (!row) return { ok: false, error: "Không tìm thấy ảnh — có thể đã bị xoá." };
+
+  const storagePath = extractStoragePath(row.image_url);
+  if (storagePath) await supabaseServer.storage.from(PROJECT_IMAGE_BUCKET).remove([storagePath]);
+
+  const { error: deleteError } = await supabaseServer.from("project_images").delete().eq("id", imageId);
+  if (deleteError) return { ok: false, error: deleteError.message };
+
+  revalidatePath(`/admin/du-an/${row.project_id}`);
+  await revalidatePublicPageIfPublished(row.project_id);
+
+  return { ok: true, projectId: row.project_id };
+}
+
+// Đặt 1 ảnh làm ảnh bìa — set is_cover=false cho MỌI ảnh khác cùng dự án trước, rồi true cho
+// đúng ảnh được chọn, đảm bảo luôn tối đa 1 ảnh bìa/dự án tại 1 thời điểm.
+export async function setCoverImage(imageId: string): Promise<ActionResult> {
+  if (!imageId) return { ok: false, error: "Thiếu id ảnh." };
+
+  const { data: row, error: fetchError } = await supabaseServer
+    .from("project_images")
+    .select("project_id")
+    .eq("id", imageId)
+    .maybeSingle();
+  if (fetchError) return { ok: false, error: fetchError.message };
+  if (!row) return { ok: false, error: "Không tìm thấy ảnh — có thể đã bị xoá." };
+
+  const { error: clearError } = await supabaseServer
+    .from("project_images")
+    .update({ is_cover: false })
+    .eq("project_id", row.project_id);
+  if (clearError) return { ok: false, error: clearError.message };
+
+  const { error: setError } = await supabaseServer.from("project_images").update({ is_cover: true }).eq("id", imageId);
+  if (setError) return { ok: false, error: setError.message };
+
+  revalidatePath(`/admin/du-an/${row.project_id}`);
+  await revalidatePublicPageIfPublished(row.project_id);
+
+  return { ok: true, projectId: row.project_id };
 }
 
 // Xoá toàn bộ dòng cũ rồi insert dòng mới — đơn giản nhất cho danh sách động ở quy mô này.
@@ -443,9 +479,9 @@ export async function updateProject(formData: FormData): Promise<ActionResult> {
   const childError = amenitiesError ?? timelineError ?? fitForError;
   if (childError) return { ok: false, error: childError };
 
-  // ---- Ảnh đại diện (hero image) ----
-  const heroImageError = await saveHeroImage(id, formData);
-  if (heroImageError) return { ok: false, error: heroImageError };
+  // Ảnh đại diện KHÔNG còn xử lý ở đây — đã gộp vào Album ảnh dự án (project_images), quản lý
+  // riêng qua saveGalleryImages()/deleteGalleryImage()/setCoverImage() (tức thời, không gộp
+  // vào "Lưu thay đổi" của form này).
 
   // Bắt buộc — nếu không, Router Cache phía client (điều hướng mềm qua Link/router.push,
   // KHÔNG liên quan gì tới force-dynamic ở page.tsx) có thể phục vụ lại đúng RSC payload

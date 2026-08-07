@@ -9,16 +9,18 @@ interface ScrollTab {
 }
 
 // "Tổng quan" (section-tong-quan) và "Vị trí" (section-vi-tri) LUÔN render vô điều kiện
-// trên trang chi tiết. "Giá" (section-gia) chỉ render khi hasPricingData(project) đúng —
-// nhận qua prop showGia, nếu không tab sẽ trỏ tới anchor không tồn tại trong DOM (đã từng
-// xảy ra thật với tab "Tiến độ" cũ khi dự án không có project_timeline).
-export function DetailTabsNav({ showGia }: { showGia: boolean }) {
+// trên trang chi tiết. "Giá" (section-gia) chỉ render khi hasPricingData(project) đúng, "Hình
+// ảnh" (section-hinh-anh) chỉ render khi hasGalleryData(project) đúng — nhận qua prop
+// showGia/showGallery, nếu không tab sẽ trỏ tới anchor không tồn tại trong DOM (đã từng xảy
+// ra thật với tab "Tiến độ" cũ khi dự án không có project_timeline).
+export function DetailTabsNav({ showGia, showGallery }: { showGia: boolean; showGallery: boolean }) {
   const { openContactModal } = useContactModal();
 
   const scrollTabs: ScrollTab[] = [
     { id: "section-tong-quan", label: "Tổng quan" },
     { id: "section-vi-tri", label: "Vị trí" },
     ...(showGia ? [{ id: "section-gia", label: "Giá" }] : []),
+    ...(showGallery ? [{ id: "section-hinh-anh", label: "Hình ảnh" }] : []),
   ];
 
   const [active, setActive] = useState(scrollTabs[0]!.id);
@@ -41,7 +43,7 @@ export function DetailTabsNav({ showGia }: { showGia: boolean }) {
     elements.forEach((el) => observer.observe(el));
     return () => observer.disconnect();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showGia]);
+  }, [showGia, showGallery]);
 
   return (
     <nav className="sticky top-0 z-10 flex gap-1 border-b border-line bg-paper/95 px-3 py-2 backdrop-blur">

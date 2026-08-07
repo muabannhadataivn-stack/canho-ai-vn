@@ -4,8 +4,8 @@ import {
   mapRowToProject,
   type AmenityRow,
   type FitForRow,
+  type GalleryImageRow,
   type LocationRow,
-  type MediaRow,
   type NearbyAmenityRow,
   type NearbyRouteRow,
   type PriceEntryRow,
@@ -60,8 +60,8 @@ export async function assembleProjects(rows: ProjectRow[]): Promise<ProjectWithT
     timelineRes,
     locationRes,
     nearbyRoutesRes,
-    mediaRes,
     fitForRes,
+    galleryRes,
   ] = await Promise.all([
     supabaseServer.from("project_pricing").select("*").in("project_id", ids),
     supabaseServer.from("project_price_entries").select("*").in("project_id", ids),
@@ -70,8 +70,10 @@ export async function assembleProjects(rows: ProjectRow[]): Promise<ProjectWithT
     supabaseServer.from("project_timeline").select("*").in("project_id", ids).order("sort_order"),
     supabaseServer.from("project_location").select("*").in("project_id", ids),
     supabaseServer.from("project_nearby_routes").select("*").in("project_id", ids),
-    supabaseServer.from("project_media").select("*").in("project_id", ids),
+    // project_media (bảng hero image cũ) KHÔNG còn được query ở đây — đã gộp vào
+    // project_images (is_cover), xem supabase-mapping.ts mapRowToProject().
     supabaseServer.from("project_fit_for").select("*").in("project_id", ids).order("sort_order"),
+    supabaseServer.from("project_images").select("*").in("project_id", ids).order("sort_order"),
   ]);
 
   for (const res of [
@@ -82,8 +84,8 @@ export async function assembleProjects(rows: ProjectRow[]): Promise<ProjectWithT
     timelineRes,
     locationRes,
     nearbyRoutesRes,
-    mediaRes,
     fitForRes,
+    galleryRes,
   ]) {
     if (res.error) throw res.error;
   }
@@ -95,8 +97,8 @@ export async function assembleProjects(rows: ProjectRow[]): Promise<ProjectWithT
   const timelineByProject = groupBy((timelineRes.data ?? []) as TimelineRow[]);
   const locationByProject = groupBy((locationRes.data ?? []) as LocationRow[]);
   const nearbyRoutesByProject = groupBy((nearbyRoutesRes.data ?? []) as NearbyRouteRow[]);
-  const mediaByProject = groupBy((mediaRes.data ?? []) as MediaRow[]);
   const fitForByProject = groupBy((fitForRes.data ?? []) as FitForRow[]);
+  const galleryByProject = groupBy((galleryRes.data ?? []) as GalleryImageRow[]);
 
   return rows.map((row) => {
     const related: ProjectRelatedRows = {
@@ -107,8 +109,8 @@ export async function assembleProjects(rows: ProjectRow[]): Promise<ProjectWithT
       timeline: timelineByProject.get(row.id) ?? [],
       location: first(locationByProject.get(row.id)),
       nearbyRoutes: nearbyRoutesByProject.get(row.id) ?? [],
-      media: first(mediaByProject.get(row.id)),
       fitFor: fitForByProject.get(row.id) ?? [],
+      gallery: galleryByProject.get(row.id) ?? [],
     };
     return withTier(mapRowToProject(row, related));
   });
