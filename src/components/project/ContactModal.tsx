@@ -145,7 +145,17 @@ export function ContactModal({ projectId, projectName, onClose }: ContactModalPr
                 onChange={(e) => setConsent(e.target.checked)}
                 className="mt-0.5 shrink-0"
               />
-              <span>Tôi đồng ý để canho.ai.vn liên hệ tư vấn về dự án này qua số điện thoại/email đã cung cấp.</span>
+              <span>
+                Tôi đồng ý để canho.ai.vn liên hệ tư vấn về dự án này qua số điện thoại/email đã cung cấp, theo{" "}
+                <a href="/chinh-sach-bao-mat" target="_blank" rel="noopener noreferrer" className="font-medium text-blueprint underline">
+                  Chính sách bảo mật
+                </a>{" "}
+                và{" "}
+                <a href="/dieu-khoan-su-dung" target="_blank" rel="noopener noreferrer" className="font-medium text-blueprint underline">
+                  Điều khoản sử dụng
+                </a>{" "}
+                của chúng tôi.
+              </span>
             </label>
 
             {error && <p className="mb-3 text-[13px] text-red">{error}</p>}

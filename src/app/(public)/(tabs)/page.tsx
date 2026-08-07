@@ -110,7 +110,8 @@ export default async function HomePage() {
       <footer className="flex flex-wrap gap-x-4 gap-y-2 px-4 py-8 text-[12.5px] text-graphite/60">
         <Link href="/ve-chung-toi">Về chúng tôi</Link>
         <Link href="/nguon-du-lieu">Nguồn dữ liệu</Link>
-        <Link href="/dieu-khoan-bao-mat">Điều khoản & Bảo mật</Link>
+        <Link href="/chinh-sach-bao-mat">Chính sách bảo mật</Link>
+        <Link href="/dieu-khoan-su-dung">Điều khoản sử dụng</Link>
         <Link href="/lien-he">Liên hệ</Link>
       </footer>
     </div>

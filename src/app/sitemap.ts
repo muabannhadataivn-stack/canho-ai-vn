@@ -9,7 +9,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${SITE_URL}/khu-vuc`, changeFrequency: "weekly", priority: 0.6 },
     { url: `${SITE_URL}/ve-chung-toi`, changeFrequency: "yearly", priority: 0.3 },
     { url: `${SITE_URL}/nguon-du-lieu`, changeFrequency: "yearly", priority: 0.3 },
-    { url: `${SITE_URL}/dieu-khoan-bao-mat`, changeFrequency: "yearly", priority: 0.2 },
+    { url: `${SITE_URL}/chinh-sach-bao-mat`, changeFrequency: "yearly", priority: 0.2 },
+    { url: `${SITE_URL}/dieu-khoan-su-dung`, changeFrequency: "yearly", priority: 0.2 },
     { url: `${SITE_URL}/lien-he`, changeFrequency: "yearly", priority: 0.2 },
   ];
 

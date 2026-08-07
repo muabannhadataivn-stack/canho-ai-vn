@@ -37,6 +37,14 @@ const nextConfig = {
         destination: "/:tinh",
         permanent: true,
       },
+      // /dieu-khoan-bao-mat (trang gộp cũ, nội dung sơ sài) đã tách thành 2 trang đầy đủ:
+      // /chinh-sach-bao-mat và /dieu-khoan-su-dung. Redirect về trang bao quát nhất
+      // (chính sách bảo mật) để bảo toàn SEO cho URL cũ nếu đã được index.
+      {
+        source: "/dieu-khoan-bao-mat",
+        destination: "/chinh-sach-bao-mat",
+        permanent: true,
+      },
     ];
   },
 };
