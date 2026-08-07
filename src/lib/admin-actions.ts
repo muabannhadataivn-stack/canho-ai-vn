@@ -370,6 +370,7 @@ export async function updateProject(formData: FormData): Promise<ActionResult> {
 
   const address = String(formData.get("address") ?? "").trim();
   const commuteNote = String(formData.get("commuteNote") ?? "").trim();
+  const newAdministrativeArea = String(formData.get("newAdministrativeArea") ?? "").trim();
 
   // ---- Cập nhật hàng projects ----
   const { data: updatedRows, error: updateError } = await supabaseServer
@@ -421,6 +422,7 @@ export async function updateProject(formData: FormData): Promise<ActionResult> {
         lat: lat ?? null,
         lng: lng ?? null,
         commute_note: commuteNote || null,
+        new_administrative_area: newAdministrativeArea || null,
       },
       { onConflict: "project_id" }
     ),

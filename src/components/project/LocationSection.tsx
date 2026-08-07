@@ -10,6 +10,11 @@ export function LocationSection({ project, number }: { project: ProjectWithTier;
     <SpecBlock number={number} title="Vị trí" id="section-vi-tri">
       <div className="space-y-2 rounded-2xl border border-line bg-white p-3.5">
         <Row k="Địa chỉ" v={address || "Đang cập nhật"} />
+        {project.location.newAdministrativeArea && (
+          <p className="text-[11.5px] italic text-graphite/50">
+            Theo địa giới hành chính mới: {project.location.newAdministrativeArea}
+          </p>
+        )}
         {project.location.commuteNote && <Row k="Di chuyển" v={project.location.commuteNote} />}
         {project.location.nearbyRoutes && project.location.nearbyRoutes.length > 0 && (
           <div>

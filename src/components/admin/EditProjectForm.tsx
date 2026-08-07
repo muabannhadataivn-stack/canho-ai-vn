@@ -149,6 +149,7 @@ export function EditProjectForm({
   const [lat, setLat] = useState(project.location.lat?.toString() ?? "");
   const [lng, setLng] = useState(project.location.lng?.toString() ?? "");
   const [commuteNote, setCommuteNote] = useState(project.location.commuteNote ?? "");
+  const [newAdministrativeArea, setNewAdministrativeArea] = useState(project.location.newAdministrativeArea ?? "");
 
   // Danh sách động
   const [amenities, setAmenities] = useState<AmenityRow[]>(
@@ -338,6 +339,7 @@ export function EditProjectForm({
     formData.set("lat", lat);
     formData.set("lng", lng);
     formData.set("commuteNote", commuteNote);
+    formData.set("newAdministrativeArea", newAdministrativeArea);
     formData.set("amenitiesJson", JSON.stringify(amenities));
     formData.set("timelineJson", JSON.stringify(timeline));
     formData.set("fitForJson", JSON.stringify(fitFor));
@@ -627,6 +629,19 @@ export function EditProjectForm({
             <label className="col-span-2 block">
               <span className={labelClass}>Ghi chú di chuyển</span>
               <input type="text" value={commuteNote} onChange={(e) => setCommuteNote(e.target.value)} className={inputClass} />
+            </label>
+            <label className="col-span-2 block">
+              <span className={labelClass}>Địa giới hành chính mới (không bắt buộc)</span>
+              <input
+                type="text"
+                value={newAdministrativeArea}
+                onChange={(e) => setNewAdministrativeArea(e.target.value)}
+                placeholder="VD: Phường An Lạc, TP.HCM"
+                className={inputClass}
+              />
+              <p className="mt-1 text-[11.5px] text-graphite/50">
+                Chưa có gợi ý tự động (chưa có bảng ánh xạ tỉnh cũ → mới với dữ liệu thật) — tự nhập/xác nhận tay.
+              </p>
             </label>
           </div>
 

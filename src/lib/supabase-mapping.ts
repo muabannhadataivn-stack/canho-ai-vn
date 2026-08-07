@@ -86,6 +86,7 @@ export interface LocationRow {
   lat: number | null;
   lng: number | null;
   commute_note: string | null;
+  new_administrative_area: string | null;
 }
 
 export interface NearbyRouteRow {
@@ -142,6 +143,7 @@ export function mapRowToProject(row: ProjectRow, related: ProjectRelatedRows): P
     lng: related.location?.lng ?? undefined,
     commuteNote: related.location?.commute_note ?? undefined,
     nearbyRoutes: related.nearbyRoutes.length > 0 ? related.nearbyRoutes.map(mapNearbyRoute) : undefined,
+    newAdministrativeArea: related.location?.new_administrative_area ?? undefined,
   };
 
   // Ảnh đại diện (hero) KHÔNG còn là bảng riêng (project_media, đã ngừng dùng) — giờ LÀ ảnh

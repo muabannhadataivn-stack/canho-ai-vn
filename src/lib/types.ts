@@ -64,6 +64,8 @@ export interface ProjectLocation {
   lng?: number;
   nearbyRoutes?: NearbyRoute[];
   commuteNote?: string;
+  /** Địa giới hành chính mới (sau sáp nhập 2025) — admin nhập tay, không tự suy luận. */
+  newAdministrativeArea?: string;
 }
 
 export interface ProjectMedia {
