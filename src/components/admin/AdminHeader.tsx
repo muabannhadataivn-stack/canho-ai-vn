@@ -24,6 +24,12 @@ export function AdminHeader() {
         <span className="font-display text-[15px] font-bold text-ink">canho.ai.vn — Quản trị</span>
         <nav className="flex items-center gap-3">
           <Link
+            href="/admin"
+            className={`text-[13px] font-medium ${pathname === "/admin" ? "text-ink" : "text-graphite/50 hover:text-ink"}`}
+          >
+            Tổng quan
+          </Link>
+          <Link
             href="/admin/du-an"
             className={`text-[13px] font-medium ${pathname.startsWith("/admin/du-an") ? "text-ink" : "text-graphite/50 hover:text-ink"}`}
           >
