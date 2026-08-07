@@ -13,8 +13,10 @@ export const metadata: Metadata = {
 export default async function HomePage() {
   const [allProvinces, publishedProjects] = await Promise.all([getAllProvinces(), getPublishedProjects()]);
   const provinces = allProvinces.slice(0, 3);
+  // getPublishedProjects() đã sắp sẵn updated_at/created_at giảm dần — so sánh bằng nhau phải
+  // trả 0 (không phải -1) để giữ nguyên thứ tự đó khi nhiều dự án cùng ngày, tránh đảo lộn xộn.
   const recentProjects = [...publishedProjects]
-    .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1))
+    .sort((a, b) => (a.updatedAt === b.updatedAt ? 0 : a.updatedAt < b.updatedAt ? 1 : -1))
     .slice(0, 4);
   const priceTiers = Object.entries(PRICE_TIER_LABEL) as [keyof typeof PRICE_TIER_LABEL, string][];
 

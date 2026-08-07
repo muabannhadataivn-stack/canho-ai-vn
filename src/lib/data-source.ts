@@ -116,12 +116,19 @@ export async function assembleProjects(rows: ProjectRow[]): Promise<ProjectWithT
   });
 }
 
-/** Chỉ trả dự án publicationStatus === "published" — dùng cho listing công khai + sitemap. */
+/**
+ * Chỉ trả dự án publicationStatus === "published" — dùng cho listing công khai + sitemap.
+ * Sắp updated_at giảm dần; updated_at chỉ lưu ngày (không có giờ/phút, xem migration init.sql)
+ * nên nhiều dự án cùng ngày sẽ trùng giá trị — dùng created_at giảm dần làm thứ tự phụ để kết
+ * quả ổn định giữa các lần load, thay vì phụ thuộc thứ tự trả về không đảm bảo của PostgREST.
+ */
 export async function getPublishedProjects(): Promise<ProjectWithTier[]> {
   const { data, error } = await supabaseServer
     .from("projects")
     .select("*")
-    .eq("publication_status", "published");
+    .eq("publication_status", "published")
+    .order("updated_at", { ascending: false })
+    .order("created_at", { ascending: false });
   if (error) throw error;
   return assembleProjects((data ?? []) as ProjectRow[]);
 }
