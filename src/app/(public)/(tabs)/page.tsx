@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 
 export default async function HomePage() {
   const [allProvinces, publishedProjects] = await Promise.all([getAllProvinces(), getPublishedProjects()]);
-  const provinces = allProvinces.slice(0, 3);
+  const provinces = allProvinces.slice(0, 6);
   // getPublishedProjects() đã sắp sẵn updated_at/created_at giảm dần — so sánh bằng nhau phải
   // trả 0 (không phải -1) để giữ nguyên thứ tự đó khi nhiều dự án cùng ngày, tránh đảo lộn xộn.
   const recentProjects = [...publishedProjects]
