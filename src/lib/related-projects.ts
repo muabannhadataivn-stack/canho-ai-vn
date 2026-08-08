@@ -10,7 +10,7 @@ import type { ProjectWithTier } from "./types";
 export function getRelatedProjects(
   current: ProjectWithTier,
   all: ProjectWithTier[],
-  limit = 1
+  limit = 4
 ): ProjectWithTier[] {
   const published = all.filter((p) => p.id !== current.id && p.publicationStatus === "published");
 
