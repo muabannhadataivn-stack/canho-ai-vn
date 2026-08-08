@@ -52,6 +52,50 @@ interface RawApiResponse {
   faq: { question: string; answer: string }[];
 }
 
+/**
+ * Trích đúng khối JSON object ĐẦU TIÊN bằng brace-matching (đếm "{"/"}" khớp cặp), bỏ qua
+ * ngoặc nằm trong chuỗi ("..."). Xác nhận thật qua log: lỗi "Unexpected non-whitespace
+ * character after JSON" không cố định — đôi khi Claude trả thêm ký tự thừa sau khối JSON hợp
+ * lệ (ngẫu nhiên theo lần sinh, không phải bug code). JSON.parse() trên toàn bộ text không
+ * chịu được kiểu "thừa cuối" này nên phải tự trích đúng khối trước khi parse.
+ */
+function extractFirstJsonObject(text: string): { json: string; trailing: string } | null {
+  const start = text.indexOf("{");
+  if (start === -1) return null;
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (ch === "\\") {
+        escaped = true;
+      } else if (ch === '"') {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (ch === '"') {
+      inString = true;
+    } else if (ch === "{") {
+      depth++;
+    } else if (ch === "}") {
+      depth--;
+      if (depth === 0) {
+        return { json: text.slice(start, i + 1), trailing: text.slice(i + 1).trim() };
+      }
+    }
+  }
+
+  return null; // không tìm được cặp ngoặc khớp — giữ hành vi báo lỗi rõ ràng như trước.
+}
+
 function parseApiResponse(raw: string): RawApiResponse {
   // Claude đôi khi vẫn bọc JSON trong ```json ... ``` dù đã dặn không — bóc trước khi parse.
   const cleaned = raw
@@ -60,7 +104,24 @@ function parseApiResponse(raw: string): RawApiResponse {
     .replace(/^```\s*/i, "")
     .replace(/```\s*$/i, "");
 
-  const parsed = JSON.parse(cleaned) as Partial<RawApiResponse>;
+  // Log debug — vẫn hữu ích để chẩn đoán nếu phát sinh vấn đề khác sau này, chưa gỡ.
+  console.log("[parseApiResponse] RAW TEXT (full, no truncation):\n" + raw);
+  console.log("[parseApiResponse] CLEANED TEXT (full, no truncation):\n" + cleaned);
+
+  const extracted = extractFirstJsonObject(cleaned);
+  if (!extracted) {
+    throw new Error("Claude API không trả về JSON hợp lệ (không tìm thấy cặp ngoặc { } khớp nhau).");
+  }
+  if (extracted.trailing.length > 0) {
+    // CẢNH BÁO, không phải lỗi — JSON đã trích xuất/parse thành công, chỉ ghi log để theo dõi
+    // tần suất Claude trả về định dạng không sạch (thêm ký tự thừa sau khối JSON hợp lệ).
+    console.warn(
+      "[parseApiResponse] Có nội dung thừa sau khối JSON hợp lệ (đã bỏ qua, không ảnh hưởng kết quả):\n" +
+        extracted.trailing
+    );
+  }
+
+  const parsed = JSON.parse(extracted.json) as Partial<RawApiResponse>;
   if (typeof parsed.introText !== "string" || !Array.isArray(parsed.faq)) {
     throw new Error("Claude API trả về JSON không đúng định dạng mong đợi.");
   }
