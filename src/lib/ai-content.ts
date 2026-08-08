@@ -134,6 +134,12 @@ function parseApiResponse(raw: string): RawApiResponse {
  * phần trả lời tự nhiên hơn. Câu hỏi giữ NGUYÊN theo templateFaq (không lấy từ AI) —
  * lớp phòng thủ để AI không thể tự đổi/thêm câu hỏi ngoài ý muốn.
  */
+// 1 lần gốc + tối đa 1 lần retry — đã xác nhận qua log thật (RAW/CLEANED TEXT) rằng lỗi JSON
+// không parse được / thiếu introText-faq là NGẪU NHIÊN theo lần sinh (test lại cùng dự án,
+// cùng prompt vẫn thành công), không phải lỗi cố định do prompt/logic sai. Không retry nhiều
+// hơn để tránh tốn phí API oan nếu lỗi thực sự do nguyên nhân khác (VD sai key, prompt lỗi).
+const MAX_GENERATION_ATTEMPTS = 2;
+
 export async function generateProjectContent(project: ProjectWithTier): Promise<GeneratedProjectContent> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error("Thiếu ANTHROPIC_API_KEY trong .env.local");
@@ -154,33 +160,49 @@ export async function generateProjectContent(project: ProjectWithTier): Promise<
     'Trả về ĐÚNG JSON theo schema sau, không thêm chữ nào khác: { "introText": string, "faq": [{ "question": string, "answer": string }] }',
   ].join("\n");
 
-  const message = await anthropic.messages.create({
-    model: AI_CONTENT_MODEL,
-    // 1500 trước đó không đủ — model mặc định bật extended thinking, đã ăn 1412/1500
-    // token vào phần suy luận nội bộ, chỉ còn ~88 token để viết JSON thật nên bị cắt
-    // cụt giữa chừng ("Unterminated string"). 8000 chừa đủ chỗ an toàn kể cả khi vẫn
-    // còn thinking, hoặc khi FAQ dài hơn (nhiều câu hơn) ở các dự án khác.
-    max_tokens: 8000,
-    // Tắt hẳn — sinh đoạn mở đầu + viết lại câu trả lời FAQ theo mẫu có sẵn không cần
-    // suy luận phức tạp, mà thinking_tokens vẫn tính phí dù không phải nội dung dùng
-    // được, nên tắt vừa rẻ hơn vừa nhanh hơn, vừa tránh lặp lại đúng lỗi này về sau.
-    thinking: { type: "disabled" },
-    system: SYSTEM_PROMPT,
-    messages: [{ role: "user", content: userPrompt }],
-  });
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= MAX_GENERATION_ATTEMPTS; attempt++) {
+    try {
+      const message = await anthropic.messages.create({
+        model: AI_CONTENT_MODEL,
+        // 1500 trước đó không đủ — model mặc định bật extended thinking, đã ăn 1412/1500
+        // token vào phần suy luận nội bộ, chỉ còn ~88 token để viết JSON thật nên bị cắt
+        // cụt giữa chừng ("Unterminated string"). 8000 chừa đủ chỗ an toàn kể cả khi vẫn
+        // còn thinking, hoặc khi FAQ dài hơn (nhiều câu hơn) ở các dự án khác.
+        max_tokens: 8000,
+        // Tắt hẳn — sinh đoạn mở đầu + viết lại câu trả lời FAQ theo mẫu có sẵn không cần
+        // suy luận phức tạp, mà thinking_tokens vẫn tính phí dù không phải nội dung dùng
+        // được, nên tắt vừa rẻ hơn vừa nhanh hơn, vừa tránh lặp lại đúng lỗi này về sau.
+        thinking: { type: "disabled" },
+        system: SYSTEM_PROMPT,
+        messages: [{ role: "user", content: userPrompt }],
+      });
 
-  const textBlock = message.content.find((block) => block.type === "text");
-  if (!textBlock || textBlock.type !== "text") {
-    throw new Error("Claude API không trả về nội dung text.");
+      const textBlock = message.content.find((block) => block.type === "text");
+      if (!textBlock || textBlock.type !== "text") {
+        throw new Error("Claude API không trả về nội dung text.");
+      }
+
+      const parsed = parseApiResponse(textBlock.text);
+
+      return {
+        introText: parsed.introText.trim(),
+        faq: templateFaq.map((tpl, i) => ({
+          question: tpl.question,
+          answer: parsed.faq[i]?.answer?.trim() || tpl.answer, // fallback về câu mẫu nếu AI thiếu/rỗng
+        })),
+      };
+    } catch (e) {
+      lastError = e;
+      if (attempt < MAX_GENERATION_ATTEMPTS) {
+        // CẢNH BÁO, không phải lỗi — sẽ tự thử lại ngay, admin không cần biết. Log để theo dõi
+        // tần suất thật qua Vercel Logs (nếu retry xảy ra thường xuyên, cần xem lại prompt).
+        console.warn(
+          `[generateProjectContent] Lần thử ${attempt}/${MAX_GENERATION_ATTEMPTS} thất bại cho dự án "${project.name}" (${project.id}), tự động thử lại: ${e instanceof Error ? e.message : String(e)}`
+        );
+      }
+    }
   }
 
-  const parsed = parseApiResponse(textBlock.text);
-
-  return {
-    introText: parsed.introText.trim(),
-    faq: templateFaq.map((tpl, i) => ({
-      question: tpl.question,
-      answer: parsed.faq[i]?.answer?.trim() || tpl.answer, // fallback về câu mẫu nếu AI thiếu/rỗng
-    })),
-  };
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }
